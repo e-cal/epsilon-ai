@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from e_ai import AssistantMessage, Context, TextContent, ThinkingContent, ToolCall, ToolResultMessage, Usage, UserMessage
+from typing import cast
+
+from e_ai import (
+    AssistantMessage,
+    TextContent,
+    ThinkingContent,
+    ToolCall,
+    Usage,
+    UserMessage,
+)
 from e_ai.models import get_model
 from e_ai.providers.anthropic import normalize_anthropic_tool_call_id
 from e_ai.providers.transform_messages import transform_messages
@@ -12,7 +21,9 @@ def test_transform_messages_converts_cross_model_thinking_to_text() -> None:
         UserMessage(content="hello", timestamp=1),
         AssistantMessage(
             content=[
-                ThinkingContent(thinking="Let me think about this...", thinking_signature="reasoning"),
+                ThinkingContent(
+                    thinking="Let me think about this...", thinking_signature="reasoning"
+                ),
                 TextContent(text="Hi there!"),
             ],
             api="openai-responses",
@@ -59,7 +70,9 @@ def test_transform_messages_strips_thought_signature_when_models_differ() -> Non
         normalize_anthropic_tool_call_id,
     )
     transformed_assistant = next(message for message in result if message.role == "assistant")
-    tool_call = next(block for block in transformed_assistant.content if isinstance(block, ToolCall))
+    tool_call = next(
+        block for block in transformed_assistant.content if isinstance(block, ToolCall)
+    )
 
     assert tool_call.thought_signature is None
 
@@ -88,7 +101,7 @@ def test_transform_messages_inserts_missing_tool_result_before_next_user_message
     synthetic_tool_result = next(message for message in result if message.role == "toolResult")
     assert synthetic_tool_result.tool_call_id == "call_1|fc_1"
     assert synthetic_tool_result.is_error is True
-    assert synthetic_tool_result.content[0].text == "No result provided"
+    assert cast(TextContent, synthetic_tool_result.content[0]).text == "No result provided"
 
 
 def test_transform_messages_skips_aborted_and_error_assistant_messages() -> None:

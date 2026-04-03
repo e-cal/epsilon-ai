@@ -1,9 +1,21 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from copy import deepcopy
+from typing import cast
 
 import pytest
-from e_ai import AssistantMessage, Context, ImageContent, TextContent, ToolCall, ToolResultMessage, Usage, UserMessage
+from e_ai import (
+    AssistantMessage,
+    Context,
+    ImageContent,
+    TextContent,
+    ToolCall,
+    ToolResultMessage,
+    Usage,
+    UserMessage,
+)
+from e_ai.event_stream import AssistantMessageEventStream
 from e_ai.hash_utils import short_hash
 from e_ai.models import get_model
 from e_ai.providers.openai_responses_shared import (
@@ -11,7 +23,7 @@ from e_ai.providers.openai_responses_shared import (
     process_openai_responses_event_stream,
 )
 from e_ai.providers.shared import create_empty_assistant_message
-from e_ai.event_stream import AssistantMessageEventStream
+from e_ai.types import AssistantMessageEvent, ToolCallDeltaEvent
 
 COPILOT_RAW_TOOL_CALL_ID = (
     "call_4VnzVawQXPB9MgYib7CiQFEY|"
@@ -24,12 +36,12 @@ COPILOT_RAW_TOOL_CALL_ID = (
 )
 
 
-def _capture_stream_events(stream: AssistantMessageEventStream) -> list[object]:
-    captured: list[object] = []
+def _capture_stream_events(stream: AssistantMessageEventStream) -> list[AssistantMessageEvent]:
+    captured: list[AssistantMessageEvent] = []
     original_push = stream.push
 
-    def push(event: object) -> None:
-        captured.append(event)
+    def push(event: AssistantMessageEvent) -> None:
+        captured.append(deepcopy(event))
         original_push(event)
 
     stream.push = push  # type: ignore[method-assign]
@@ -106,7 +118,9 @@ def test_convert_responses_messages_keeps_tool_result_images_in_function_call_ou
     )
 
     payload = convert_responses_messages(model, context, {"openai"})
-    function_call_output = next(item for item in payload if item.get("type") == "function_call_output")
+    function_call_output = next(
+        item for item in payload if item.get("type") == "function_call_output"
+    )
     output = function_call_output["output"]
 
     assert isinstance(output, list)
@@ -188,8 +202,8 @@ async def test_process_openai_responses_event_stream_emits_incremental_events() 
         "toolcall_delta",
         "toolcall_end",
     ]
-    toolcall_delta = captured[7]
-    assert toolcall_delta.partial.content[2].arguments == {"value": 2}
+    toolcall_delta = cast(ToolCallDeltaEvent, captured[7])
+    assert cast(ToolCall, toolcall_delta.partial.content[2]).arguments == {"value": 2}
     assert output.response_id == "resp_1"
     assert output.stop_reason == "toolUse"
     assert output.usage.input == 8

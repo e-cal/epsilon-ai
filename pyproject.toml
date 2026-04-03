@@ -3,9 +3,9 @@ requires = ["hatchling>=1.27.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "epsilon-workspace"
+name = "epsai"
 version = "0.1.0"
-description = "Epsilon workspace for the pi monorepo port"
+description = "Epsilon AI framework"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = []

@@ -79,25 +79,27 @@ async def _run_openai_responses(
             **(model.headers or {}),
             **(options.headers if options and options.headers else {}),
         }
-        async with httpx.AsyncClient(timeout=None) as client:
-            async with client.stream(
+        async with (
+            httpx.AsyncClient(timeout=None) as client,
+            client.stream(
                 "POST",
                 f"{model.base_url.rstrip('/')}/responses",
                 headers=headers,
                 json=payload,
-            ) as response:
-                response.raise_for_status()
-                stream.push(StartEvent(partial=output))
-                await process_openai_responses_event_stream(
-                    _iterate_openai_response_events(response, options.signal if options else None),
-                    output,
-                    stream,
-                    model,
-                    options=OpenAIResponsesStreamOptions(
-                        service_tier=options.service_tier if options else None,
-                        apply_service_tier_pricing=apply_service_tier_pricing,
-                    ),
-                )
+            ) as response,
+        ):
+            response.raise_for_status()
+            stream.push(StartEvent(partial=output))
+            await process_openai_responses_event_stream(
+                _iterate_openai_response_events(response, options.signal if options else None),
+                output,
+                stream,
+                model,
+                options=OpenAIResponsesStreamOptions(
+                    service_tier=options.service_tier if options else None,
+                    apply_service_tier_pricing=apply_service_tier_pricing,
+                ),
+            )
 
         raise_if_signal_aborted(options.signal if options else None)
         if output.stop_reason in {"error", "aborted"}:

@@ -11,7 +11,15 @@ import httpx
 from ..env_api_keys import get_env_api_key
 from ..event_stream import AssistantMessageEventStream, create_assistant_message_event_stream
 from ..runtime import RequestAbortedError, is_signal_aborted, maybe_await, raise_if_signal_aborted
-from ..types import Context, DoneEvent, ErrorEvent, Model, SimpleStreamOptions, StartEvent, StreamOptions
+from ..types import (
+    Context,
+    DoneEvent,
+    ErrorEvent,
+    Model,
+    SimpleStreamOptions,
+    StartEvent,
+    StreamOptions,
+)
 from .openai_responses_shared import (
     OpenAIResponsesStreamOptions,
     convert_responses_messages,
@@ -89,22 +97,24 @@ async def _run_azure_openai_responses(
             **(model.headers or {}),
             **(options.headers if options and options.headers else {}),
         }
-        async with httpx.AsyncClient(timeout=None) as client:
-            async with client.stream(
+        async with (
+            httpx.AsyncClient(timeout=None) as client,
+            client.stream(
                 "POST",
                 f"{base_url.rstrip('/')}/responses?api-version={api_version}",
                 headers=headers,
                 json=payload,
-            ) as response:
-                response.raise_for_status()
-                stream.push(StartEvent(partial=output))
-                await process_openai_responses_event_stream(
-                    _iterate_azure_response_events(response, options.signal if options else None),
-                    output,
-                    stream,
-                    model,
-                    options=OpenAIResponsesStreamOptions(),
-                )
+            ) as response,
+        ):
+            response.raise_for_status()
+            stream.push(StartEvent(partial=output))
+            await process_openai_responses_event_stream(
+                _iterate_azure_response_events(response, options.signal if options else None),
+                output,
+                stream,
+                model,
+                options=OpenAIResponsesStreamOptions(),
+            )
 
         raise_if_signal_aborted(options.signal if options else None)
         if output.stop_reason in {"error", "aborted"}:
@@ -244,4 +254,6 @@ def resolve_azure_config(
 
 
 def _is_abort_error(exc: Exception, options: AzureOpenAIResponsesOptions | None) -> bool:
-    return isinstance(exc, RequestAbortedError) or is_signal_aborted(options.signal if options else None)
+    return isinstance(exc, RequestAbortedError) or is_signal_aborted(
+        options.signal if options else None
+    )

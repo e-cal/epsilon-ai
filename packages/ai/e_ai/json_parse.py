@@ -55,9 +55,8 @@ def _repair_partial_json(value: str) -> str | None:
             stack.append("}")
         elif char == "[":
             stack.append("]")
-        elif char in {"}", "]"}:
-            if stack and stack[-1] == char:
-                stack.pop()
+        elif char in {"}", "]"} and stack and stack[-1] == char:
+            stack.pop()
 
     if escaped:
         text = text[:-1]

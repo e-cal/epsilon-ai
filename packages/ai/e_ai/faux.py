@@ -10,12 +10,13 @@ from collections import deque
 from collections.abc import Awaitable, Callable
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Literal, TypeAlias, cast
+from typing import Literal, cast
 
 from .api_registry import ApiProvider, register_api_provider, unregister_api_provider
 from .event_stream import AssistantMessageEventStream, create_assistant_message_event_stream
 from .json_parse import parse_streaming_json
 from .models import register_models, unregister_provider_models
+from .providers.shared import start_background_task
 from .runtime import (
     RequestAbortedError,
     create_abort_task,
@@ -50,7 +51,6 @@ from .types import (
     ToolResultMessage,
     Usage,
 )
-from .providers.shared import start_background_task
 
 DEFAULT_API = "faux"
 DEFAULT_PROVIDER = "faux"
@@ -75,12 +75,12 @@ class FauxModelDefinition:
     max_tokens: int = 16_384
 
 
-FauxResponseFactory: TypeAlias = Callable[
+type FauxResponseFactory = Callable[
     [Context, StreamOptions | None, "FauxProviderState", Model],
     AssistantMessage | Awaitable[AssistantMessage],
 ]
-FauxResponseStep: TypeAlias = AssistantMessage | FauxResponseFactory
-FauxContentBlock: TypeAlias = TextContent | ThinkingContent | ToolCall
+type FauxResponseStep = AssistantMessage | FauxResponseFactory
+type FauxContentBlock = TextContent | ThinkingContent | ToolCall
 
 
 def faux_text(text: str, *, text_signature: str | None = None) -> TextContent:

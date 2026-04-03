@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
+from ..event_stream import AssistantMessageEventStream
 from ..hash_utils import short_hash
 from ..json_parse import parse_streaming_json
 from ..models import calculate_cost
@@ -30,7 +31,6 @@ from ..types import (
     ToolCallStartEvent,
     Usage,
 )
-from ..event_stream import AssistantMessageEventStream
 from .transform_messages import transform_messages
 
 TextPhase = Literal["commentary", "final_answer"]
@@ -134,7 +134,9 @@ def convert_responses_messages(
                     if not block.thinking_signature:
                         continue
                     try:
-                        assistant_output.append(cast(dict[str, Any], json.loads(block.thinking_signature)))
+                        assistant_output.append(
+                            cast(dict[str, Any], json.loads(block.thinking_signature))
+                        )
                     except json.JSONDecodeError:
                         continue
                     continue
@@ -184,9 +186,7 @@ def convert_responses_messages(
             continue
 
         text_result = "\n".join(
-            sanitize_surrogates(block.text)
-            for block in message.content
-            if block.type == "text"
+            sanitize_surrogates(block.text) for block in message.content if block.type == "text"
         )
         image_blocks = [block for block in message.content if isinstance(block, ImageContent)]
         tool_output: str | list[dict[str, Any]]
@@ -261,7 +261,9 @@ async def process_openai_responses_event_stream(
             if item_type == "reasoning":
                 current_block = ThinkingContent(thinking="")
                 output.content.append(current_block)
-                stream.push(ThinkingStartEvent(content_index=len(output.content) - 1, partial=output))
+                stream.push(
+                    ThinkingStartEvent(content_index=len(output.content) - 1, partial=output)
+                )
             elif item_type == "message":
                 current_block = TextContent(text="")
                 output.content.append(current_block)
@@ -281,11 +283,17 @@ async def process_openai_responses_event_stream(
 
         if event_type == "response.reasoning_summary_part.added":
             if current_item and current_item.get("type") == "reasoning":
-                current_item.setdefault("summary", []).append(cast(dict[str, Any], event.get("part") or {}))
+                current_item.setdefault("summary", []).append(
+                    cast(dict[str, Any], event.get("part") or {})
+                )
             continue
 
         if event_type == "response.reasoning_summary_text.delta":
-            if current_item and current_item.get("type") == "reasoning" and isinstance(current_block, ThinkingContent):
+            if (
+                current_item
+                and current_item.get("type") == "reasoning"
+                and isinstance(current_block, ThinkingContent)
+            ):
                 summary = cast(list[dict[str, Any]], current_item.setdefault("summary", []))
                 if summary:
                     summary[-1]["text"] = cast(str, summary[-1].get("text") or "") + cast(
@@ -304,7 +312,11 @@ async def process_openai_responses_event_stream(
             continue
 
         if event_type == "response.reasoning_summary_part.done":
-            if current_item and current_item.get("type") == "reasoning" and isinstance(current_block, ThinkingContent):
+            if (
+                current_item
+                and current_item.get("type") == "reasoning"
+                and isinstance(current_block, ThinkingContent)
+            ):
                 summary = cast(list[dict[str, Any]], current_item.setdefault("summary", []))
                 if summary:
                     summary[-1]["text"] = cast(str, summary[-1].get("text") or "") + "\n\n"
@@ -327,12 +339,18 @@ async def process_openai_responses_event_stream(
             continue
 
         if event_type in {"response.output_text.delta", "response.refusal.delta"}:
-            if current_item and current_item.get("type") == "message" and isinstance(current_block, TextContent):
+            if (
+                current_item
+                and current_item.get("type") == "message"
+                and isinstance(current_block, TextContent)
+            ):
                 content = cast(list[dict[str, Any]], current_item.get("content") or [])
                 if not content:
                     continue
                 last_part = content[-1]
-                expected_type = "output_text" if event_type == "response.output_text.delta" else "refusal"
+                expected_type = (
+                    "output_text" if event_type == "response.output_text.delta" else "refusal"
+                )
                 if last_part.get("type") != expected_type:
                     continue
                 delta = cast(str, event.get("delta") or "")
@@ -349,7 +367,11 @@ async def process_openai_responses_event_stream(
             continue
 
         if event_type == "response.function_call_arguments.delta":
-            if current_item and current_item.get("type") == "function_call" and isinstance(current_block, ToolCall):
+            if (
+                current_item
+                and current_item.get("type") == "function_call"
+                and isinstance(current_block, ToolCall)
+            ):
                 delta = cast(str, event.get("delta") or "")
                 current_tool_partial_json += delta
                 current_block.arguments = parse_streaming_json(current_tool_partial_json)
@@ -363,12 +385,16 @@ async def process_openai_responses_event_stream(
             continue
 
         if event_type == "response.function_call_arguments.done":
-            if current_item and current_item.get("type") == "function_call" and isinstance(current_block, ToolCall):
+            if (
+                current_item
+                and current_item.get("type") == "function_call"
+                and isinstance(current_block, ToolCall)
+            ):
                 previous_partial_json = current_tool_partial_json
                 current_tool_partial_json = cast(str, event.get("arguments") or "")
                 current_block.arguments = parse_streaming_json(current_tool_partial_json)
                 if current_tool_partial_json.startswith(previous_partial_json):
-                    delta = current_tool_partial_json[len(previous_partial_json):]
+                    delta = current_tool_partial_json[len(previous_partial_json) :]
                     if delta:
                         stream.push(
                             ToolCallDeltaEvent(
@@ -441,7 +467,10 @@ async def process_openai_responses_event_stream(
                 output.response_id = cast(str, response.get("id"))
             usage_data = cast(dict[str, Any], response.get("usage") or {})
             cached_tokens = int(
-                cast(dict[str, Any], usage_data.get("input_tokens_details") or {}).get("cached_tokens") or 0
+                cast(dict[str, Any], usage_data.get("input_tokens_details") or {}).get(
+                    "cached_tokens"
+                )
+                or 0
             )
             if usage_data:
                 output.usage = Usage(
@@ -457,15 +486,22 @@ async def process_openai_responses_event_stream(
                     output.usage,
                     cast(str | None, response.get("service_tier")) or options.service_tier,
                 )
-            output.stop_reason = map_openai_responses_status(cast(str | None, response.get("status")))
-            if any(block.type == "toolCall" for block in output.content) and output.stop_reason == "stop":
+            output.stop_reason = map_openai_responses_status(
+                cast(str | None, response.get("status"))
+            )
+            if (
+                any(block.type == "toolCall" for block in output.content)
+                and output.stop_reason == "stop"
+            ):
                 output.stop_reason = "toolUse"
             continue
 
         if event_type == "error":
             code = event.get("code")
             message = event.get("message")
-            raise RuntimeError(f"Error Code {code}: {message}" if code or message else "Unknown error")
+            raise RuntimeError(
+                f"Error Code {code}: {message}" if code or message else "Unknown error"
+            )
 
         if event_type == "response.failed":
             response = cast(dict[str, Any], event.get("response") or {})

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from e_ai import Context, TextContent, Tool, ToolCall, ToolResultMessage, UserMessage, Usage
+from typing import cast
+
+from e_ai import Context, ImageContent, TextContent, Tool, ToolResultMessage, UserMessage
 from e_ai.models import get_model
 from e_ai.providers.anthropic import AnthropicOptions, build_anthropic_payload
 from e_ai.providers.azure_openai_responses import (
@@ -9,6 +11,7 @@ from e_ai.providers.azure_openai_responses import (
     resolve_deployment_name,
 )
 from e_ai.providers.openai_responses import OpenAIResponsesOptions, build_openai_responses_payload
+from e_ai.types import Message
 
 
 def test_openai_responses_payload_includes_reasoning_and_tools() -> None:
@@ -44,19 +47,22 @@ def test_openai_responses_payload_includes_reasoning_and_tools() -> None:
 def test_openai_responses_payload_keeps_tool_result_images_in_function_call_output() -> None:
     model = get_model("openai", "gpt-5-mini")
     context = Context(
-        messages=[
-            UserMessage(content="use the tool", timestamp=1),
-            ToolResultMessage(
-                tool_call_id="call_1|fc_1",
-                tool_name="describe_image",
-                content=[
-                    TextContent(text="A red circle with a diameter of 100 pixels."),
-                    type("Image", (), {"type": "image", "data": "Zm9v", "mime_type": "image/png"})(),
-                ],
-                is_error=False,
-                timestamp=2,
-            ),
-        ]
+        messages=cast(
+            list[Message],
+            [
+                UserMessage(content="use the tool", timestamp=1),
+                ToolResultMessage(
+                    tool_call_id="call_1|fc_1",
+                    tool_name="describe_image",
+                    content=[
+                        TextContent(text="A red circle with a diameter of 100 pixels."),
+                        ImageContent(data="Zm9v", mime_type="image/png"),
+                    ],
+                    is_error=False,
+                    timestamp=2,
+                ),
+            ],
+        ),
     )
 
     payload = build_openai_responses_payload(model, context)

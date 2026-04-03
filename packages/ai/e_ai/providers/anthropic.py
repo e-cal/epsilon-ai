@@ -115,23 +115,25 @@ async def _run_anthropic(
                 payload = cast(dict[str, object], replacement)
 
         headers = build_anthropic_headers(model, api_key, options, is_oauth)
-        async with httpx.AsyncClient(timeout=None) as client:
-            async with client.stream(
+        async with (
+            httpx.AsyncClient(timeout=None) as client,
+            client.stream(
                 "POST",
                 anthropic_messages_url(model.base_url),
                 headers=headers,
                 json=payload,
-            ) as response:
-                response.raise_for_status()
-                stream.push(StartEvent(partial=output))
-                await process_anthropic_event_stream(
-                    _iterate_anthropic_events(response, options.signal if options else None),
-                    output,
-                    stream,
-                    model,
-                    context.tools,
-                    is_oauth,
-                )
+            ) as response,
+        ):
+            response.raise_for_status()
+            stream.push(StartEvent(partial=output))
+            await process_anthropic_event_stream(
+                _iterate_anthropic_events(response, options.signal if options else None),
+                output,
+                stream,
+                model,
+                context.tools,
+                is_oauth,
+            )
 
         raise_if_signal_aborted(options.signal if options else None)
         if output.stop_reason in {"error", "aborted"}:
@@ -168,7 +170,9 @@ def stream_simple_anthropic(
 
     base = build_base_options(model, options, api_key)
     if not options or not options.reasoning:
-        return stream_anthropic(model, context, AnthropicOptions(**base.__dict__, thinking_enabled=False))
+        return stream_anthropic(
+            model, context, AnthropicOptions(**base.__dict__, thinking_enabled=False)
+        )
 
     if supports_adaptive_thinking(model.id):
         return stream_anthropic(
@@ -214,7 +218,9 @@ def build_anthropic_payload(
             is_oauth_token_value,
             cache_control,
         ),
-        "max_tokens": (options.max_tokens if options and options.max_tokens else model.max_tokens // 3),
+        "max_tokens": (
+            options.max_tokens if options and options.max_tokens else model.max_tokens // 3
+        ),
         "stream": True,
     }
 
@@ -352,7 +358,9 @@ def convert_anthropic_messages(
                     {
                         "type": "tool_use",
                         "id": block.id,
-                        "name": to_claude_code_name(block.name) if is_oauth_token_value else block.name,
+                        "name": to_claude_code_name(block.name)
+                        if is_oauth_token_value
+                        else block.name,
                         "input": block.arguments,
                     }
                 )
@@ -381,16 +389,24 @@ def convert_anthropic_messages(
         if last_message.get("role") == "user":
             content = last_message.get("content")
             if isinstance(content, str):
-                last_message["content"] = [{"type": "text", "text": content, "cache_control": cache_control}]
+                last_message["content"] = [
+                    {"type": "text", "text": content, "cache_control": cache_control}
+                ]
             elif isinstance(content, list) and content:
                 last_block = content[-1]
-                if isinstance(last_block, dict) and last_block.get("type") in {"text", "image", "tool_result"}:
+                if isinstance(last_block, dict) and last_block.get("type") in {
+                    "text",
+                    "image",
+                    "tool_result",
+                }:
                     last_block["cache_control"] = cache_control
 
     return params
 
 
-def convert_anthropic_tools(tools: list[Tool], is_oauth_token_value: bool) -> list[dict[str, object]]:
+def convert_anthropic_tools(
+    tools: list[Tool], is_oauth_token_value: bool
+) -> list[dict[str, object]]:
     return [
         {
             "name": to_claude_code_name(tool.name) if is_oauth_token_value else tool.name,
@@ -447,11 +463,15 @@ async def process_anthropic_event_stream(
             if block_type == "text":
                 assistant.content.append(TextContent(text=""))
                 content_index_by_event_index[event_index] = len(assistant.content) - 1
-                stream.push(TextStartEvent(content_index=len(assistant.content) - 1, partial=assistant))
+                stream.push(
+                    TextStartEvent(content_index=len(assistant.content) - 1, partial=assistant)
+                )
             elif block_type == "thinking":
                 assistant.content.append(ThinkingContent(thinking="", thinking_signature=""))
                 content_index_by_event_index[event_index] = len(assistant.content) - 1
-                stream.push(ThinkingStartEvent(content_index=len(assistant.content) - 1, partial=assistant))
+                stream.push(
+                    ThinkingStartEvent(content_index=len(assistant.content) - 1, partial=assistant)
+                )
             elif block_type == "redacted_thinking":
                 assistant.content.append(
                     ThinkingContent(
@@ -461,19 +481,25 @@ async def process_anthropic_event_stream(
                     )
                 )
                 content_index_by_event_index[event_index] = len(assistant.content) - 1
-                stream.push(ThinkingStartEvent(content_index=len(assistant.content) - 1, partial=assistant))
+                stream.push(
+                    ThinkingStartEvent(content_index=len(assistant.content) - 1, partial=assistant)
+                )
             elif block_type == "tool_use":
                 tool_name = cast(str, content_block.get("name") or "")
                 assistant.content.append(
                     ToolCall(
                         id=cast(str, content_block.get("id") or ""),
-                        name=from_claude_code_name(tool_name, tools) if is_oauth_token_value else tool_name,
+                        name=from_claude_code_name(tool_name, tools)
+                        if is_oauth_token_value
+                        else tool_name,
                         arguments=cast(JSONObject, content_block.get("input") or {}),
                     )
                 )
                 content_index_by_event_index[event_index] = len(assistant.content) - 1
                 tool_json_by_event_index[event_index] = ""
-                stream.push(ToolCallStartEvent(content_index=len(assistant.content) - 1, partial=assistant))
+                stream.push(
+                    ToolCallStartEvent(content_index=len(assistant.content) - 1, partial=assistant)
+                )
             continue
 
         if event_type == "content_block_delta":
@@ -487,7 +513,9 @@ async def process_anthropic_event_stream(
             if delta_type == "text_delta" and isinstance(block, TextContent):
                 text_delta = cast(str, delta.get("text") or "")
                 block.text += text_delta
-                stream.push(TextDeltaEvent(content_index=content_index, delta=text_delta, partial=assistant))
+                stream.push(
+                    TextDeltaEvent(content_index=content_index, delta=text_delta, partial=assistant)
+                )
             elif delta_type == "thinking_delta" and isinstance(block, ThinkingContent):
                 thinking_delta = cast(str, delta.get("thinking") or "")
                 block.thinking += thinking_delta
@@ -500,7 +528,9 @@ async def process_anthropic_event_stream(
                 )
             elif delta_type == "input_json_delta" and isinstance(block, ToolCall):
                 partial_json = cast(str, delta.get("partial_json") or "")
-                tool_json_by_event_index[event_index] = tool_json_by_event_index.get(event_index, "") + partial_json
+                tool_json_by_event_index[event_index] = (
+                    tool_json_by_event_index.get(event_index, "") + partial_json
+                )
                 block.arguments = parse_streaming_json(tool_json_by_event_index[event_index])
                 stream.push(
                     ToolCallDeltaEvent(
@@ -523,7 +553,9 @@ async def process_anthropic_event_stream(
                 continue
             block = assistant.content[content_index]
             if isinstance(block, TextContent):
-                stream.push(TextEndEvent(content_index=content_index, content=block.text, partial=assistant))
+                stream.push(
+                    TextEndEvent(content_index=content_index, content=block.text, partial=assistant)
+                )
             elif isinstance(block, ThinkingContent):
                 stream.push(
                     ThinkingEndEvent(
@@ -537,7 +569,9 @@ async def process_anthropic_event_stream(
                 if partial_json:
                     block.arguments = parse_streaming_json(partial_json)
                 stream.push(
-                    ToolCallEndEvent(content_index=content_index, tool_call=block, partial=assistant)
+                    ToolCallEndEvent(
+                        content_index=content_index, tool_call=block, partial=assistant
+                    )
                 )
             continue
 
@@ -579,7 +613,9 @@ def resolve_cache_retention(cache_retention: CacheRetention | None) -> CacheRete
     return "short"
 
 
-def get_cache_control(base_url: str, cache_retention: CacheRetention | None) -> dict[str, str] | None:
+def get_cache_control(
+    base_url: str, cache_retention: CacheRetention | None
+) -> dict[str, str] | None:
     retention = resolve_cache_retention(cache_retention)
     if retention == "none":
         return None
@@ -588,11 +624,17 @@ def get_cache_control(base_url: str, cache_retention: CacheRetention | None) -> 
     return {"type": "ephemeral"}
 
 
-def convert_content_blocks(content: list[TextContent | ImageContent]) -> str | list[dict[str, object]]:
+def convert_content_blocks(
+    content: list[TextContent | ImageContent],
+) -> str | list[dict[str, object]]:
     has_images = any(getattr(block, "type", None) == "image" for block in content)
     if not has_images:
         return sanitize_surrogates(
-            "\n".join(cast(TextContent, block).text for block in content if getattr(block, "type", None) == "text")
+            "\n".join(
+                cast(TextContent, block).text
+                for block in content
+                if getattr(block, "type", None) == "text"
+            )
         )
 
     blocks: list[dict[str, object]] = []
@@ -624,9 +666,9 @@ def build_anthropic_headers(
     options: AnthropicOptions | None,
     is_oauth_token_value: bool,
 ) -> dict[str, str]:
-    needs_interleaved_beta = bool(options and options.interleaved_thinking is not False) and not supports_adaptive_thinking(
-        model.id
-    )
+    needs_interleaved_beta = bool(
+        options and options.interleaved_thinking is not False
+    ) and not supports_adaptive_thinking(model.id)
     beta_features = ["fine-grained-tool-streaming-2025-05-14"]
     if needs_interleaved_beta:
         beta_features.append("interleaved-thinking-2025-05-14")
@@ -696,7 +738,9 @@ def normalize_anthropic_tool_call_id(
     source: AssistantMessage,
 ) -> str:
     del model, source
-    return "".join(char if char.isalnum() or char in {"_", "-"} else "_" for char in tool_call_id)[:64]
+    return "".join(char if char.isalnum() or char in {"_", "-"} else "_" for char in tool_call_id)[
+        :64
+    ]
 
 
 def to_claude_code_name(name: str) -> str:
@@ -729,7 +773,9 @@ def map_anthropic_stop_reason(reason: str | None) -> StopReason:
 
 
 def _is_abort_error(exc: Exception, options: AnthropicOptions | None) -> bool:
-    return isinstance(exc, RequestAbortedError) or is_signal_aborted(options.signal if options else None)
+    return isinstance(exc, RequestAbortedError) or is_signal_aborted(
+        options.signal if options else None
+    )
 
 
 def _int_value(value: object, default: int) -> int:

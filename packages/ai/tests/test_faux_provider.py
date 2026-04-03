@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+from typing import cast
 
 import pytest
 from e_ai import (
     Context,
     StreamOptions,
+    TextContent,
     UserMessage,
     complete,
     faux_assistant_message,
@@ -90,7 +92,10 @@ async def test_faux_provider_estimates_usage_and_session_cache() -> None:
     second = await complete(model, context, options)
     assert second.usage.cache_read > 0
     assert second.usage.total_tokens == (
-        second.usage.input + second.usage.output + second.usage.cache_read + second.usage.cache_write
+        second.usage.input
+        + second.usage.output
+        + second.usage.cache_read
+        + second.usage.cache_write
     )
 
     registration.unregister()
@@ -124,8 +129,8 @@ async def test_faux_provider_supports_async_factories_and_multiple_models() -> N
         Context(messages=[UserMessage(content="hi", timestamp=1)]),
     )
 
-    assert fast.content[0].text == "1:1:faux-fast:False"
-    assert thinker.content[0].text == "1:2:faux-thinker:True"
+    assert cast(TextContent, fast.content[0]).text == "1:1:faux-fast:False"
+    assert cast(TextContent, thinker.content[0]).text == "1:2:faux-thinker:True"
 
     registration.unregister()
 
