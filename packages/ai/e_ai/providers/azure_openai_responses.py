@@ -1,0 +1,247 @@
+from __future__ import annotations
+
+import json
+import os
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
+from typing import Literal, cast
+
+import httpx
+
+from ..env_api_keys import get_env_api_key
+from ..event_stream import AssistantMessageEventStream, create_assistant_message_event_stream
+from ..runtime import RequestAbortedError, is_signal_aborted, maybe_await, raise_if_signal_aborted
+from ..types import Context, DoneEvent, ErrorEvent, Model, SimpleStreamOptions, StartEvent, StreamOptions
+from .openai_responses_shared import (
+    OpenAIResponsesStreamOptions,
+    convert_responses_messages,
+    convert_responses_tools,
+    process_openai_responses_event_stream,
+)
+from .shared import create_empty_assistant_message, start_background_task
+from .simple_options import build_base_options, clamp_reasoning
+from .sse import iterate_sse_messages
+
+AZURE_TOOL_CALL_PROVIDERS = {"azure-openai-responses"}
+DEFAULT_AZURE_API_VERSION = "v1"
+
+
+@dataclass(slots=True)
+class AzureOpenAIResponsesOptions(StreamOptions):
+    reasoning_effort: str | None = None
+    reasoning_summary: str | None = None
+    azure_api_version: str | None = None
+    azure_resource_name: str | None = None
+    azure_base_url: str | None = None
+    azure_deployment_name: str | None = None
+
+
+def stream_azure_openai_responses(
+    model: Model,
+    context: Context,
+    options: AzureOpenAIResponsesOptions | None = None,
+):
+    stream = create_assistant_message_event_stream()
+    start_background_task(_run_azure_openai_responses(stream, model, context, options))
+    return stream
+
+
+async def _run_azure_openai_responses(
+    stream: AssistantMessageEventStream,
+    model: Model,
+    context: Context,
+    options: AzureOpenAIResponsesOptions | None,
+) -> None:
+    output = create_empty_assistant_message(api=model.api, provider=model.provider, model=model.id)
+    try:
+        raise_if_signal_aborted(options.signal if options else None)
+
+        api_key = options.api_key if options else None
+        api_key = api_key or get_env_api_key(model.provider)
+        if not api_key:
+            raise ValueError("Azure OpenAI API key is required")
+
+        base_url, api_version = resolve_azure_config(model, options)
+        deployment_name = resolve_deployment_name(model, options)
+        provider_model = Model(
+            id=deployment_name,
+            name=model.name,
+            api=model.api,
+            provider=model.provider,
+            base_url=base_url,
+            reasoning=model.reasoning,
+            input=list(model.input),
+            cost=model.cost,
+            context_window=model.context_window,
+            max_tokens=model.max_tokens,
+            headers=model.headers,
+            compat=model.compat,
+        )
+        payload = build_azure_openai_responses_payload(provider_model, context, options)
+        if options and options.on_payload is not None:
+            replacement = await maybe_await(options.on_payload(payload, model))
+            if replacement is not None:
+                payload = cast(dict[str, object], replacement)
+
+        headers = {
+            "api-key": api_key,
+            "Content-Type": "application/json",
+            **(model.headers or {}),
+            **(options.headers if options and options.headers else {}),
+        }
+        async with httpx.AsyncClient(timeout=None) as client:
+            async with client.stream(
+                "POST",
+                f"{base_url.rstrip('/')}/responses?api-version={api_version}",
+                headers=headers,
+                json=payload,
+            ) as response:
+                response.raise_for_status()
+                stream.push(StartEvent(partial=output))
+                await process_openai_responses_event_stream(
+                    _iterate_azure_response_events(response, options.signal if options else None),
+                    output,
+                    stream,
+                    model,
+                    options=OpenAIResponsesStreamOptions(),
+                )
+
+        raise_if_signal_aborted(options.signal if options else None)
+        if output.stop_reason in {"error", "aborted"}:
+            raise RuntimeError("An unknown error occurred")
+
+        stream.push(
+            DoneEvent(
+                reason=cast(Literal["stop", "length", "toolUse"], output.stop_reason),
+                message=output,
+            )
+        )
+        stream.end(output)
+    except Exception as exc:
+        output.stop_reason = "aborted" if _is_abort_error(exc, options) else "error"
+        output.error_message = str(exc)
+        stream.push(
+            ErrorEvent(
+                reason=cast(Literal["aborted", "error"], output.stop_reason),
+                error=output,
+            )
+        )
+        stream.end(output)
+
+
+def stream_simple_azure_openai_responses(
+    model: Model,
+    context: Context,
+    options: SimpleStreamOptions | None = None,
+):
+    api_key = options.api_key if options else None
+    api_key = api_key or get_env_api_key(model.provider)
+    if not api_key:
+        raise ValueError(f"No API key for provider: {model.provider}")
+
+    base = build_base_options(model, options, api_key)
+    reasoning_effort = options.reasoning if options and model.reasoning else None
+    if reasoning_effort is not None and not model.id.startswith("gpt-5."):
+        reasoning_effort = clamp_reasoning(reasoning_effort)
+
+    return stream_azure_openai_responses(
+        model,
+        context,
+        AzureOpenAIResponsesOptions(**base.__dict__, reasoning_effort=reasoning_effort),
+    )
+
+
+def build_azure_openai_responses_payload(
+    model: Model,
+    context: Context,
+    options: AzureOpenAIResponsesOptions | None = None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "model": model.id,
+        "input": convert_responses_messages(model, context, AZURE_TOOL_CALL_PROVIDERS),
+        "stream": True,
+    }
+    if options and options.session_id:
+        payload["prompt_cache_key"] = options.session_id
+    if options and options.max_tokens is not None:
+        payload["max_output_tokens"] = options.max_tokens
+    if options and options.temperature is not None:
+        payload["temperature"] = options.temperature
+    if context.tools:
+        payload["tools"] = convert_responses_tools(context.tools)
+    if model.reasoning:
+        if options and (options.reasoning_effort or options.reasoning_summary):
+            payload["reasoning"] = {
+                "effort": options.reasoning_effort or "medium",
+                "summary": options.reasoning_summary or "auto",
+            }
+            payload["include"] = ["reasoning.encrypted_content"]
+        else:
+            payload["reasoning"] = {"effort": "none"}
+    return payload
+
+
+async def _iterate_azure_response_events(
+    response: httpx.Response,
+    signal: object | None,
+) -> AsyncIterator[dict[str, object]]:
+    async for _event_name, data in iterate_sse_messages(response, signal):
+        if not data or data == "[DONE]":
+            continue
+        parsed = json.loads(data)
+        if isinstance(parsed, dict):
+            yield cast(dict[str, object], parsed)
+
+
+def resolve_deployment_name(
+    model: Model,
+    options: AzureOpenAIResponsesOptions | None = None,
+) -> str:
+    if options and options.azure_deployment_name:
+        return options.azure_deployment_name
+    deployment_map = parse_deployment_name_map(os.environ.get("AZURE_OPENAI_DEPLOYMENT_NAME_MAP"))
+    return deployment_map.get(model.id, model.id)
+
+
+def parse_deployment_name_map(value: str | None) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    if not value:
+        return mapping
+    for entry in value.split(","):
+        model_id, separator, deployment_name = entry.strip().partition("=")
+        if separator:
+            mapping[model_id.strip()] = deployment_name.strip()
+    return mapping
+
+
+def resolve_azure_config(
+    model: Model,
+    options: AzureOpenAIResponsesOptions | None = None,
+) -> tuple[str, str]:
+    api_version = (
+        (options.azure_api_version if options else None)
+        or os.environ.get("AZURE_OPENAI_API_VERSION")
+        or DEFAULT_AZURE_API_VERSION
+    )
+    base_url = (options.azure_base_url if options else None) or os.environ.get(
+        "AZURE_OPENAI_BASE_URL"
+    )
+    resource_name = (options.azure_resource_name if options else None) or os.environ.get(
+        "AZURE_OPENAI_RESOURCE_NAME"
+    )
+
+    resolved_base_url = base_url.strip().rstrip("/") if base_url else ""
+    if not resolved_base_url and resource_name:
+        resolved_base_url = f"https://{resource_name}.openai.azure.com/openai/v1"
+    if not resolved_base_url and model.base_url:
+        resolved_base_url = model.base_url.rstrip("/")
+    if not resolved_base_url:
+        raise ValueError(
+            "Azure OpenAI base URL is required. Set AZURE_OPENAI_BASE_URL or "
+            "AZURE_OPENAI_RESOURCE_NAME."
+        )
+    return resolved_base_url, api_version
+
+
+def _is_abort_error(exc: Exception, options: AzureOpenAIResponsesOptions | None) -> bool:
+    return isinstance(exc, RequestAbortedError) or is_signal_aborted(options.signal if options else None)
