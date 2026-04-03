@@ -1,13 +1,13 @@
-# epsilon port todo
+# epsai port todo
 
 ## 0. Project framing
-- [x] Define target repository/package layout mirroring the upstream monorepo where practical
-  - [x] `packages/ai`
-  - [x] `packages/agent`
-  - [x] `packages/coding-agent`
-  - [x] `packages/tui`
-- [x] Decide Python workspace/build tooling
-  - [x] packaging strategy for multiple internal packages via `uv` workspace members under `packages/*`
+- [x] Define target repository/module layout mirroring the upstream monorepo where practical
+  - [x] `epsai.llm`
+  - [x] `epsai.agent`
+  - [x] `epsai.coding_agent`
+  - [x] `epsai.tui`
+- [x] Decide Python packaging/build tooling
+  - [x] packaging strategy for a single `epsai` distribution with module divisions
   - [x] linting/formatting (`ruff`)
   - [x] type checking (`pyright`, standard mode)
   - [x] testing (`pytest`)
@@ -26,10 +26,10 @@
   - [-] explicitly defer `pods`
   - [-] explicitly defer `web-ui`
 - [ ] Produce a source-to-port map for major modules
-  - [ ] `packages/ai/src`
-  - [ ] `packages/agent/src`
-  - [ ] `packages/coding-agent/src`
-  - [ ] `packages/tui/src`
+  - [ ] `pi-mono/packages/ai/src` -> `epsai.llm`
+  - [ ] `pi-mono/packages/agent/src` -> `epsai.agent`
+  - [ ] `pi-mono/packages/coding-agent/src` -> `epsai.coding_agent`
+  - [ ] `pi-mono/packages/tui/src` -> `epsai.tui`
 - [ ] Identify public APIs and user-visible behavior that must remain compatible
 - [ ] Identify test suites upstream that can guide parity validation
 
@@ -50,7 +50,7 @@
   - [ ] file/path helpers
   - [ ] event emitter/subscriber primitives
 
-## 3. `packages/ai` - AI router / provider layer
+## 3. `epsai.llm` - LLM client / provider layer
 ### 3.1 Core model and registry layer
 - [x] Port provider/model registry concepts
 - [x] Port model metadata structures
@@ -96,7 +96,7 @@
 - [ ] Port/replicate cross-provider handoff tests
 - [ ] Port/replicate image and tool-call edge case tests
 
-## 4. `packages/agent` - agent framework
+## 4. `epsai.agent` - agent framework
 ### 4.1 Core state and types
 - [ ] Port agent state model
 - [ ] Port agent message model including extensibility strategy
@@ -129,11 +129,11 @@
 - [ ] Add abort/retry tests
 - [ ] Add steering/follow-up behavior tests
 
-## 5. `packages/tui` - terminal UI support
+## 5. `epsai.tui` - terminal UI support
 > Planned intentionally last. This is the main area where implementation may deviate from upstream more substantially.
 
 ### 5.1 TUI strategy decision
-- [ ] Work on TUI only after the core `ai`, `agent`, and `coding-agent` layers are stable enough to drive it
+- [ ] Work on TUI only after the core `epsai.llm`, `epsai.agent`, and `epsai.coding_agent` layers are stable enough to drive it
 - [ ] Compare candidate directions
   - [ ] follow `pi` closely
   - [ ] custom Python implementation with Textual
@@ -165,7 +165,7 @@
 - [ ] Establish tmux/manual smoke-test procedure
 - [ ] Validate key workflows against upstream behavior even if implementation differs
 
-## 6. `packages/coding-agent` - coding harness / CLI
+## 6. `epsai.coding_agent` - coding harness / CLI
 ### 6.1 Core session runtime
 - [ ] Port model resolution/default model selection
 - [ ] Port session runtime wiring across AI + agent + TUI

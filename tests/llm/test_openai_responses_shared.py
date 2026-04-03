@@ -5,7 +5,8 @@ from copy import deepcopy
 from typing import cast
 
 import pytest
-from e_ai import (
+
+from epsai.llm import (
     AssistantMessage,
     Context,
     ImageContent,
@@ -15,15 +16,15 @@ from e_ai import (
     Usage,
     UserMessage,
 )
-from e_ai.event_stream import AssistantMessageEventStream
-from e_ai.hash_utils import short_hash
-from e_ai.models import get_model
-from e_ai.providers.openai_responses_shared import (
+from epsai.llm.event_stream import AssistantMessageEventStream
+from epsai.llm.hash_utils import short_hash
+from epsai.llm.models import get_model
+from epsai.llm.providers.openai_responses_shared import (
     convert_responses_messages,
     process_openai_responses_event_stream,
 )
-from e_ai.providers.shared import create_empty_assistant_message
-from e_ai.types import AssistantMessageEvent, ToolCallDeltaEvent
+from epsai.llm.providers.shared import create_empty_assistant_message
+from epsai.llm.types import AssistantMessageEvent, ToolCallDeltaEvent
 
 COPILOT_RAW_TOOL_CALL_ID = (
     "call_4VnzVawQXPB9MgYib7CiQFEY|"

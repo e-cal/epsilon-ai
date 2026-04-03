@@ -1,6 +1,6 @@
-# e-tui
+# `epsai.tui`
 
-Initial Epsilon port target for the `pi-mono` TUI package.
+Epsilon AI Framework module corresponding to the upstream `pi-mono/packages/tui` package.
 
 Planned scope:
 

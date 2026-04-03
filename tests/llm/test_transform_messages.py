@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import cast
 
-from e_ai import (
+from epsai.llm import (
     AssistantMessage,
     TextContent,
     ThinkingContent,
@@ -10,9 +10,9 @@ from e_ai import (
     Usage,
     UserMessage,
 )
-from e_ai.models import get_model
-from e_ai.providers.anthropic import normalize_anthropic_tool_call_id
-from e_ai.providers.transform_messages import transform_messages
+from epsai.llm.models import get_model
+from epsai.llm.providers.anthropic import normalize_anthropic_tool_call_id
+from epsai.llm.providers.transform_messages import transform_messages
 
 
 def test_transform_messages_converts_cross_model_thinking_to_text() -> None:

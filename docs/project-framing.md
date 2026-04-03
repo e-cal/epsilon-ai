@@ -1,30 +1,30 @@
 # Project framing
 
-This document captures early repository-level decisions for Epsilon, the Python port of `pi-mono`.
+This document captures early repository-level decisions for Epsilon AI Framework, the Python port of `pi-mono`.
 
 ## Repository layout
 
-The repository mirrors the upstream package layout where practical:
+The repository uses a single Python distribution with module boundaries that mirror the upstream package split where practical:
 
-- `packages/ai` → Python AI router / provider layer
-- `packages/agent` → Python agent framework
-- `packages/coding-agent` → Python coding harness / CLI
-- `packages/tui` → Python terminal UI support
+- `epsai/llm/` → Python LLM client / provider layer
+- `epsai/agent/` → Python agent framework
+- `epsai/coding_agent/` → Python coding harness / CLI
+- `epsai/tui/` → Python terminal UI support
 
-Each package is an individual Python distribution and a `uv` workspace member.
+Tests live under `tests/`, grouped by module.
 
-Python import package names:
+Python import module names:
 
-- `e_ai`
-- `e_agent`
-- `e_coding_agent`
-- `e_tui`
+- `epsai.llm`
+- `epsai.agent`
+- `epsai.coding_agent`
+- `epsai.tui`
 
 ## Tooling
 
 Repository-level tooling decisions:
 
-- workspace and dependency management: `uv`
+- dependency management: `uv`
 - linting and formatting: `ruff`
 - type checking: `pyright` in `standard` mode
 - testing: `pytest`

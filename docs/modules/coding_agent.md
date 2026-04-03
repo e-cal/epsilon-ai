@@ -1,6 +1,6 @@
-# e-coding-agent
+# `epsai.coding_agent`
 
-Initial Epsilon port target for the `pi-mono` coding-agent package.
+Epsilon AI Framework module corresponding to the upstream `pi-mono/packages/coding-agent` package.
 
 Planned scope:
 

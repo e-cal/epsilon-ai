@@ -5,22 +5,16 @@ build-backend = "hatchling.build"
 [project]
 name = "epsai"
 version = "0.1.0"
-description = "Epsilon AI framework"
+description = "Epsilon AI Framework"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["httpx>=0.28.1"]
 
 [tool.uv]
-package = false
+package = true
 
-[tool.uv.workspace]
-members = ["packages/*"]
-
-[tool.uv.sources]
-e-ai = { workspace = true }
-e-agent = { workspace = true }
-e-coding-agent = { workspace = true }
-e-tui = { workspace = true }
+[tool.hatch.build.targets.wheel]
+packages = ["epsai"]
 
 [dependency-groups]
 dev = [
@@ -40,10 +34,10 @@ select = ["B", "E", "F", "I", "RUF", "SIM", "UP"]
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
-include = ["packages"]
+include = ["epsai", "tests"]
 reportMissingTypeStubs = false
 
 [tool.pytest.ini_options]
 addopts = "-q"
 asyncio_mode = "auto"
-testpaths = ["packages"]
+testpaths = ["tests"]

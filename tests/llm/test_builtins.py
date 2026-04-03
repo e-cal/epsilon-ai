@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from e_ai import get_api_provider, get_model
+from epsai.llm import get_api_provider, get_model
 
 
 def test_built_in_api_providers_are_registered() -> None:

@@ -5,15 +5,6 @@ requires-python = ">=3.12"
 [options]
 exclude-newer = "2026-03-27T16:33:58Z"
 
-[manifest]
-members = [
-    "e-agent",
-    "e-ai",
-    "e-coding-agent",
-    "e-tui",
-    "epsilon-workspace",
-]
-
 [[package]]
 name = "anyio"
 version = "4.13.0"
@@ -46,51 +37,12 @@ wheels = [
 ]
 
 [[package]]
-name = "e-agent"
+name = "epsai"
 version = "0.1.0"
-source = { editable = "packages/agent" }
-dependencies = [
-    { name = "e-ai" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "e-ai", editable = "packages/ai" }]
-
-[[package]]
-name = "e-ai"
-version = "0.1.0"
-source = { editable = "packages/ai" }
+source = { editable = "." }
 dependencies = [
     { name = "httpx" },
 ]
-
-[package.metadata]
-requires-dist = [{ name = "httpx", specifier = ">=0.28.1" }]
-
-[[package]]
-name = "e-coding-agent"
-version = "0.1.0"
-source = { editable = "packages/coding-agent" }
-dependencies = [
-    { name = "e-agent" },
-    { name = "e-ai" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "e-agent", editable = "packages/agent" },
-    { name = "e-ai", editable = "packages/ai" },
-]
-
-[[package]]
-name = "e-tui"
-version = "0.1.0"
-source = { editable = "packages/tui" }
-
-[[package]]
-name = "epsilon-workspace"
-version = "0.1.0"
-source = { virtual = "." }
 
 [package.dev-dependencies]
 dev = [
@@ -101,6 +53,7 @@ dev = [
 ]
 
 [package.metadata]
+requires-dist = [{ name = "httpx", specifier = ">=0.28.1" }]
 
 [package.metadata.requires-dev]
 dev = [

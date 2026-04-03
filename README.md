@@ -1,35 +1,42 @@
-# Epsilon
+# epsai
 
-Python port of `~/projects/pi-mono/`.
+`epsai` is the Python port of `~/projects/pi-mono/`.
 
-## Scope
+## Layout
 
-Current target packages:
+The repository now ships as one Python distribution with module-level divisions:
 
-- `packages/ai`
-- `packages/agent`
-- `packages/coding-agent`
-- `packages/tui`
+- `epsai.llm`
+- `epsai.agent`
+- `epsai.coding_agent`
+- `epsai.tui`
 
 The TypeScript monorepo remains the specification. Port behavior first, then refine architecture.
 
-See `docs/project-framing.md` for current repository layout and porting conventions.
+See `docs/project-framing.md` for repository-level conventions.
+
+Module docs:
+
+- `docs/modules/llm.md`
+- `docs/modules/agent.md`
+- `docs/modules/coding_agent.md`
+- `docs/modules/tui.md`
 
 ## Tooling
 
 This repo uses:
 
-- `uv` for workspace, dependency management, and command execution
+- `uv` for dependency management and command execution
 - `ruff` for linting and formatting
 - `pyright` for type checking
 - `pytest` for tests
 
-## Workspace commands
+## Commands
 
-With `direnv` enabled, this repo uses the `epsilon/` virtual environment automatically.
+With `direnv` enabled, this repo uses the `.venv/` environment automatically.
 
 ```bash
-uv sync --all-packages
+uv sync
 ruff check .
 ruff format .
 pyright

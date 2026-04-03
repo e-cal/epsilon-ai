@@ -1,4 +1,4 @@
-# e-ai
+# `epsai.llm`
 
 Unified LLM API for the Python port with model discovery, provider routing, streaming assistant events, tool calling, token and cost tracking, and transferable conversation context.
 
@@ -20,12 +20,12 @@ Only tool-capable models are included.
 
 ## Installation
 
-This package lives inside the `py-mono` workspace.
+This module ships inside the `epsai` distribution.
 
 From the repo root:
 
 ```bash
-uv sync --all-packages
+uv sync
 ```
 
 ## Quick Start
@@ -33,7 +33,7 @@ uv sync --all-packages
 ```python
 import asyncio
 
-from e_ai import (
+from epsai.llm import (
     Context,
     StreamOptions,
     TextContent,
@@ -139,7 +139,7 @@ During `toolcall_delta`, `event.partial.content[event.content_index]` contains t
 Tools are plain structured definitions:
 
 ```python
-from e_ai import Tool
+from epsai.llm import Tool
 
 tool = Tool(
     name="get_weather",
@@ -169,7 +169,7 @@ Models advertise supported input types via `model.input`.
 Use the simplified interface for cross-provider reasoning control:
 
 ```python
-from e_ai import Context, SimpleStreamOptions, complete_simple, get_model
+from epsai.llm import Context, SimpleStreamOptions, complete_simple, get_model
 
 model = get_model("anthropic", "claude-sonnet-4-5")
 
@@ -191,7 +191,7 @@ Not every provider uses the same native reasoning controls, but the package maps
 ## Models and Providers
 
 ```python
-from e_ai import get_model, get_models, get_providers
+from epsai.llm import get_model, get_models, get_providers
 
 providers = get_providers()
 openai_models = get_models("openai")
@@ -236,7 +236,7 @@ gpt-4o-mini=prod-mini,gpt-5-mini=prod-five
 The faux provider is intended for deterministic tests and local harnesses.
 
 ```python
-from e_ai import faux_assistant_message, register_faux_provider
+from epsai.llm import faux_assistant_message, register_faux_provider
 
 registration = register_faux_provider()
 registration.set_responses([faux_assistant_message("hello")])
@@ -257,7 +257,7 @@ Built-in provider registration is currently not lazy.
 
 What that means:
 
-- importing `e_ai.stream` registers built-in providers immediately
+- importing `epsai.llm.stream` registers built-in providers immediately
 - the built-in provider modules are imported eagerly during that registration path
 - missing or broken imports in those built-in provider modules fail at import time rather than the first call to a specific provider
 - startup/import cost is slightly higher than the upstream TS package, which uses lazy registration wrappers
@@ -271,6 +271,6 @@ This is a known structural difference from upstream, not a behavioral limitation
 
 ## Current Scope Notes
 
-- The package aims at parity with `pi-mono/packages/ai` for the selected providers only
+- The module aims at parity with `pi-mono/packages/ai` for the selected providers only
 - OpenAI Responses and Azure OpenAI Responses share most response semantics but still differ in auth, base URL, API version, and deployment handling
-- The package-local Python package lives at `packages/ai/e_ai/`
+- The Python source lives at `epsai/llm/`

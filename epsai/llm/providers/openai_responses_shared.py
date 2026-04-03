@@ -394,7 +394,7 @@ async def process_openai_responses_event_stream(
                 current_tool_partial_json = cast(str, event.get("arguments") or "")
                 current_block.arguments = parse_streaming_json(current_tool_partial_json)
                 if current_tool_partial_json.startswith(previous_partial_json):
-                    delta = current_tool_partial_json[len(previous_partial_json) :]
+                    delta = current_tool_partial_json[len(previous_partial_json):]
                     if delta:
                         stream.push(
                             ToolCallDeltaEvent(

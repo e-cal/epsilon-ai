@@ -5,16 +5,17 @@ from copy import deepcopy
 from typing import cast
 
 import pytest
-from e_ai import Context, Tool, UserMessage
-from e_ai.event_stream import AssistantMessageEventStream
-from e_ai.models import get_model
-from e_ai.providers.anthropic import (
+
+from epsai.llm import Context, Tool, UserMessage
+from epsai.llm.event_stream import AssistantMessageEventStream
+from epsai.llm.models import get_model
+from epsai.llm.providers.anthropic import (
     AnthropicOptions,
     build_anthropic_payload,
     process_anthropic_event_stream,
 )
-from e_ai.providers.shared import create_empty_assistant_message
-from e_ai.types import AssistantMessageEvent, ToolCall, ToolCallDeltaEvent
+from epsai.llm.providers.shared import create_empty_assistant_message
+from epsai.llm.types import AssistantMessageEvent, ToolCall, ToolCallDeltaEvent
 
 
 def _capture_stream_events(stream: AssistantMessageEventStream) -> list[AssistantMessageEvent]:
@@ -79,7 +80,7 @@ def test_build_anthropic_payload_round_trips_claude_code_tool_names_for_oauth() 
 
 
 @pytest.mark.asyncio
-async def test_process_anthropic_event_stream_emits_partial_tool_json_and_restores_oauth_tool_name() -> None:
+async def test_process_anthropic_event_stream_emits_partial_tool_json_and_restores_oauth_tool_name() -> None:  # noqa: E501
     model = get_model("anthropic", "claude-sonnet-4-20250514")
     output = create_empty_assistant_message(api=model.api, provider=model.provider, model=model.id)
     stream = AssistantMessageEventStream()

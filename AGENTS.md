@@ -5,10 +5,10 @@ This repository is an early-stage Python port of `~/projects/pi-mono/`.
 Primary goal: achieve 1:1 feature and behavior parity with the TypeScript monorepo while keeping the Python codebase clean, explicit, and readable.
 
 Primary target scope for the port:
-- `packages/ai` -> Python AI router / provider layer
-- `packages/agent` -> Python agent framework
-- `packages/coding-agent` -> Python coding agent harness / CLI
-- `packages/tui` -> Python terminal UI support needed by the coding agent
+- `epsai.llm` -> Python LLM client / provider layer
+- `epsai.agent` -> Python agent framework
+- `epsai.coding_agent` -> Python coding agent harness / CLI
+- `epsai.tui` -> Python terminal UI support needed by the coding agent
 
 Out of scope for now unless the user explicitly asks:
 - `packages/mom`
@@ -20,15 +20,21 @@ The TypeScript source repo is the specification. When behavior is unclear, read 
 ## First Message
 If the user did not give a concrete task in their first message:
 1. Read `README.md`
-2. Ask which area to work on
-3. Read the relevant source material in `~/projects/pi-mono/` before changing Python code
+2. Ask which module to work on
+3. Read the relevant local module docs and source material in `~/projects/pi-mono/` before changing Python code
 
-When starting work on a subsystem, prioritize reading the matching source docs from `pi-mono`:
+When starting work on a subsystem, prioritize reading:
 - `README.md`
-- `packages/ai/README.md`
-- `packages/agent/README.md`
-- `packages/coding-agent/README.md`
-- `packages/tui/README.md` when the work touches terminal UI
+- `docs/modules/llm.md`
+- `docs/modules/agent.md`
+- `docs/modules/coding_agent.md`
+- `docs/modules/tui.md` when the work touches terminal UI
+
+Relevant upstream docs:
+- `pi-mono/packages/ai/README.md`
+- `pi-mono/packages/agent/README.md`
+- `pi-mono/packages/coding-agent/README.md`
+- `pi-mono/packages/tui/README.md` when the work touches terminal UI
 
 ## Core Porting Rules
 - Preserve user-visible behavior from `pi-mono` unless the user asks otherwise
@@ -64,26 +70,28 @@ When starting work on a subsystem, prioritize reading the matching source docs f
 - Prefer `AsyncIterator`-based event streams for streaming APIs and keep event ordering close to upstream
 
 ## Project Structure
-The Python port mirrors the source monorepo layout where practical:
-- `packages/ai/`
-- `packages/agent/`
-- `packages/coding-agent/`
-- `packages/tui/`
+The Python port ships as a single distribution with module-level boundaries:
+- `epsai/llm/`
+- `epsai/agent/`
+- `epsai/coding_agent/`
+- `epsai/tui/`
+- `tests/llm/`
 
-Python import package names:
-- `e_ai`
-- `e_agent`
-- `e_coding_agent`
-- `e_tui`
+Python import module names:
+- `epsai.llm`
+- `epsai.agent`
+- `epsai.coding_agent`
+- `epsai.tui`
 
 Layout preference:
-- Prefer package-local Python package directories directly in the package root (for example `packages/ai/e_ai/`)
+- Keep Python code inside `epsai/`
+- Keep tests inside `tests/`
 - Avoid JS-style `src/` nesting unless there is a clear Python-specific reason and the user agrees
 
 If the repo has not reached the full upstream structure yet, create code with that destination in mind.
 
 TUI note:
-- The TUI package may ultimately be implemented with a different stack than upstream
+- The TUI module may ultimately be implemented with a different stack than upstream
 - Candidate directions currently include:
   - follow `pi` closely
   - custom Python TUI using Textual
@@ -96,16 +104,16 @@ TUI note:
 Use Python-equivalent commands that fit the repository as it exists.
 
 Preferred tooling once available:
-- package/workspace management: `uv` only (never `pip`)
+- package management: `uv` only (never `pip`)
 - format/lint: `ruff check`, `ruff format`
 - type checking: `pyright`
 - tests: `pytest`
 
 Rules:
-- After code changes, run the relevant Python checks for the files/packages changed
+- After code changes, run the relevant Python checks for the files/modules changed
 - If you create or modify tests, run those tests and iterate until they pass
 - Use `uv` for installs and lockfile updates
-- The repo virtual environment lives in `epsilon/`; with `direnv` allowed, bare commands like `ruff`, `pyright`, and `pytest` should work
+- The repo virtual environment lives in `.venv/`; with `direnv` allowed, bare commands like `ruff`, `pyright`, and `pytest` should work
 - Prefer `pyright` in `standard` mode unless the user asks for stricter or looser settings
 - Do not run unrelated long-running commands unless the user asks
 - Never commit unless the user asks
@@ -117,7 +125,7 @@ Rules:
 - When porting behavior, add regression tests for subtle upstream semantics
 
 ## AI Provider Scope (current)
-For the initial `packages/ai` port, prioritize only:
+For the initial `epsai.llm` port, prioritize only:
 - OpenAI via the Responses API
 - Anthropic Messages API
 - Azure OpenAI Responses API
@@ -146,7 +154,7 @@ Read the original files fully before porting or changing the Python equivalent.
 - Use the `read` tool to inspect files
 - Use `bash` for discovery commands like `find`, `rg`, and `ls`
 - You must read every file you modify in full before editing
-- Always look for a `continue.md` file in the relevant package/directory before starting or resuming work
+- Always look for a `continue.md` file in the relevant module/directory before starting or resuming work
 - If `continue.md` exists, read it first; after reading it, it may be deleted
 - Only create a `continue.md` file when the user explicitly asks for it
 - When creating `continue.md`, record:

@@ -4,7 +4,8 @@ import asyncio
 from typing import cast
 
 import pytest
-from e_ai import (
+
+from epsai.llm import (
     Context,
     StreamOptions,
     TextContent,

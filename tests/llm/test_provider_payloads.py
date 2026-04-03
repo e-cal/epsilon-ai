@@ -2,16 +2,19 @@ from __future__ import annotations
 
 from typing import cast
 
-from e_ai import Context, ImageContent, TextContent, Tool, ToolResultMessage, UserMessage
-from e_ai.models import get_model
-from e_ai.providers.anthropic import AnthropicOptions, build_anthropic_payload
-from e_ai.providers.azure_openai_responses import (
+from epsai.llm import Context, ImageContent, TextContent, Tool, ToolResultMessage, UserMessage
+from epsai.llm.models import get_model
+from epsai.llm.providers.anthropic import AnthropicOptions, build_anthropic_payload
+from epsai.llm.providers.azure_openai_responses import (
     AzureOpenAIResponsesOptions,
     parse_deployment_name_map,
     resolve_deployment_name,
 )
-from e_ai.providers.openai_responses import OpenAIResponsesOptions, build_openai_responses_payload
-from e_ai.types import Message
+from epsai.llm.providers.openai_responses import (
+    OpenAIResponsesOptions,
+    build_openai_responses_payload,
+)
+from epsai.llm.types import Message
 
 
 def test_openai_responses_payload_includes_reasoning_and_tools() -> None:

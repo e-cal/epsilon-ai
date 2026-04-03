@@ -1,6 +1,6 @@
-# e-agent
+# `epsai.agent`
 
-Initial Epsilon port target for the `pi-mono` agent package.
+Epsilon AI Framework module corresponding to the upstream `pi-mono/packages/agent` package.
 
 Planned scope:
 
