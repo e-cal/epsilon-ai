@@ -1,0 +1,14 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "e-tui"
+version = "0.1.0"
+description = "Epsilon terminal UI support"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/e_tui"]
