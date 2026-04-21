@@ -10,6 +10,7 @@ import httpx
 
 from ..env_api_keys import get_env_api_key
 from ..event_stream import AssistantMessageEventStream, create_assistant_message_event_stream
+from ..models import supports_xhigh
 from ..runtime import RequestAbortedError, is_signal_aborted, maybe_await, raise_if_signal_aborted
 from ..types import (
     CacheRetention,
@@ -29,10 +30,15 @@ from .openai_responses_shared import (
     process_openai_responses_event_stream,
 )
 from .shared import create_empty_assistant_message, start_background_task
-from .simple_options import build_base_options, clamp_reasoning
+from .simple_options import (
+    build_base_options,
+    clamp_reasoning,
+    coerce_stream_options,
+    stream_options_to_kwargs,
+)
 from .sse import iterate_sse_messages
 
-OPENAI_TOOL_CALL_PROVIDERS = {"openai"}
+OPENAI_TOOL_CALL_PROVIDERS = {"openai", "openai-codex", "opencode"}
 
 
 @dataclass(slots=True)
@@ -45,10 +51,11 @@ class OpenAIResponsesOptions(StreamOptions):
 def stream_openai_responses(
     model: Model,
     context: Context,
-    options: OpenAIResponsesOptions | None = None,
+    options: OpenAIResponsesOptions | StreamOptions | None = None,
 ):
+    resolved_options = coerce_stream_options(options, OpenAIResponsesOptions)
     stream = create_assistant_message_event_stream()
-    start_background_task(_run_openai_responses(stream, model, context, options))
+    start_background_task(_run_openai_responses(stream, model, context, resolved_options))
     return stream
 
 
@@ -73,12 +80,25 @@ async def _run_openai_responses(
             if replacement is not None:
                 payload = cast(dict[str, object], replacement)
 
-        headers = {
+        cache_retention = _resolve_cache_retention(
+            options.cache_retention if options else None
+        )
+        cache_session_id = (
+            options.session_id
+            if options and options.session_id and cache_retention != "none"
+            else None
+        )
+        headers: dict[str, str] = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             **(model.headers or {}),
-            **(options.headers if options and options.headers else {}),
         }
+        if cache_session_id:
+            headers["session_id"] = cache_session_id
+            headers["x-client-request-id"] = cache_session_id
+        if options and options.headers:
+            # User-supplied headers override provider defaults.
+            headers.update(options.headers)
         async with (
             httpx.AsyncClient(timeout=None) as client,
             client.stream(
@@ -103,7 +123,7 @@ async def _run_openai_responses(
 
         raise_if_signal_aborted(options.signal if options else None)
         if output.stop_reason in {"error", "aborted"}:
-            raise RuntimeError("An unknown error occurred")
+            raise RuntimeError(output.error_message or "An unknown error occurred")
 
         stream.push(
             DoneEvent(
@@ -135,47 +155,55 @@ def stream_simple_openai_responses(
         raise ValueError(f"No API key for provider: {model.provider}")
 
     base = build_base_options(model, options, api_key)
-    reasoning_effort = options.reasoning if options and model.reasoning else None
-    if reasoning_effort is not None and not model.id.startswith("gpt-5."):
+    reasoning_effort = options.reasoning if options else None
+    if reasoning_effort is not None and not supports_xhigh(model):
         reasoning_effort = clamp_reasoning(reasoning_effort)
 
     return stream_openai_responses(
         model,
         context,
-        OpenAIResponsesOptions(**base.__dict__, reasoning_effort=reasoning_effort),
+        OpenAIResponsesOptions(
+            **stream_options_to_kwargs(base, OpenAIResponsesOptions),
+            reasoning_effort=reasoning_effort,
+        ),
     )
 
 
 def build_openai_responses_payload(
     model: Model,
     context: Context,
-    options: OpenAIResponsesOptions | None = None,
+    options: OpenAIResponsesOptions | StreamOptions | None = None,
 ) -> dict[str, object]:
-    cache_retention = _resolve_cache_retention(options.cache_retention if options else None)
+    resolved_options = coerce_stream_options(options, OpenAIResponsesOptions)
+    cache_retention = _resolve_cache_retention(
+        resolved_options.cache_retention if resolved_options else None
+    )
     payload: dict[str, object] = {
         "model": model.id,
         "input": convert_responses_messages(model, context, OPENAI_TOOL_CALL_PROVIDERS),
         "stream": True,
         "store": False,
     }
-    if options and options.session_id and cache_retention != "none":
-        payload["prompt_cache_key"] = options.session_id
+    if resolved_options and resolved_options.session_id and cache_retention != "none":
+        payload["prompt_cache_key"] = resolved_options.session_id
         prompt_cache_retention = _get_prompt_cache_retention(model.base_url, cache_retention)
         if prompt_cache_retention is not None:
             payload["prompt_cache_retention"] = prompt_cache_retention
-    if options and options.max_tokens is not None:
-        payload["max_output_tokens"] = options.max_tokens
-    if options and options.temperature is not None:
-        payload["temperature"] = options.temperature
-    if options and options.service_tier is not None:
-        payload["service_tier"] = options.service_tier
+    if resolved_options and resolved_options.max_tokens is not None:
+        payload["max_output_tokens"] = resolved_options.max_tokens
+    if resolved_options and resolved_options.temperature is not None:
+        payload["temperature"] = resolved_options.temperature
+    if resolved_options and resolved_options.service_tier is not None:
+        payload["service_tier"] = resolved_options.service_tier
     if context.tools:
         payload["tools"] = convert_responses_tools(context.tools)
     if model.reasoning:
-        if options and (options.reasoning_effort or options.reasoning_summary):
+        if resolved_options and (
+            resolved_options.reasoning_effort or resolved_options.reasoning_summary
+        ):
             payload["reasoning"] = {
-                "effort": options.reasoning_effort or "medium",
-                "summary": options.reasoning_summary or "auto",
+                "effort": resolved_options.reasoning_effort or "medium",
+                "summary": resolved_options.reasoning_summary or "auto",
             }
             payload["include"] = ["reasoning.encrypted_content"]
         else:

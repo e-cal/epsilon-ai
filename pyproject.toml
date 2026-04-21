@@ -3,7 +3,7 @@ requires = ["hatchling>=1.27.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "epsai"
+name = "epsilon-ai"
 version = "0.1.0"
 description = "Epsilon AI Framework"
 readme = "README.md"
@@ -14,7 +14,7 @@ dependencies = ["httpx>=0.28.1"]
 package = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["epsai"]
+packages = ["epsilon"]
 
 [dependency-groups]
 dev = [
@@ -34,7 +34,7 @@ select = ["B", "E", "F", "I", "RUF", "SIM", "UP"]
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
-include = ["epsai", "tests"]
+include = ["epsilon", "tests"]
 reportMissingTypeStubs = false
 
 [tool.pytest.ini_options]

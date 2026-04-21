@@ -6,7 +6,7 @@ from typing import cast
 
 import pytest
 
-from epsai.llm import (
+from epsilon.llm import (
     AssistantMessage,
     Context,
     ImageContent,
@@ -16,15 +16,15 @@ from epsai.llm import (
     Usage,
     UserMessage,
 )
-from epsai.llm.event_stream import AssistantMessageEventStream
-from epsai.llm.hash_utils import short_hash
-from epsai.llm.models import get_model
-from epsai.llm.providers.openai_responses_shared import (
+from epsilon.llm.event_stream import AssistantMessageEventStream
+from epsilon.llm.hash_utils import short_hash
+from epsilon.llm.models import get_model
+from epsilon.llm.providers.openai_responses_shared import (
     convert_responses_messages,
     process_openai_responses_event_stream,
 )
-from epsai.llm.providers.shared import create_empty_assistant_message
-from epsai.llm.types import AssistantMessageEvent, ToolCallDeltaEvent
+from epsilon.llm.providers.shared import create_empty_assistant_message
+from epsilon.llm.types import AssistantMessageEvent, ToolCallDeltaEvent
 
 COPILOT_RAW_TOOL_CALL_ID = (
     "call_4VnzVawQXPB9MgYib7CiQFEY|"
@@ -210,3 +210,50 @@ async def test_process_openai_responses_event_stream_emits_incremental_events() 
     assert output.usage.input == 8
     assert output.usage.cache_read == 2
     assert output.usage.total_tokens == 13
+
+
+@pytest.mark.asyncio
+async def test_process_openai_responses_event_stream_keeps_terminal_error_details() -> None:
+    model = get_model("openai", "gpt-5-mini")
+    output = create_empty_assistant_message(api=model.api, provider=model.provider, model=model.id)
+    stream = AssistantMessageEventStream()
+
+    events = [
+        {
+            "type": "response.completed",
+            "response": {
+                "status": "failed",
+                "error": {
+                    "code": "insufficient_quota",
+                    "message": "You exceeded your current quota.",
+                },
+            },
+        }
+    ]
+
+    await process_openai_responses_event_stream(_aiter(events), output, stream, model)
+
+    assert output.stop_reason == "error"
+    assert output.error_message == "insufficient_quota: You exceeded your current quota."
+
+
+@pytest.mark.asyncio
+async def test_process_openai_responses_event_stream_reads_nested_error_event_payload() -> None:
+    model = get_model("openai", "gpt-5-mini")
+    output = create_empty_assistant_message(api=model.api, provider=model.provider, model=model.id)
+    stream = AssistantMessageEventStream()
+
+    events = [
+        {
+            "type": "error",
+            "error": {
+                "code": "insufficient_quota",
+                "message": "You exceeded your current quota.",
+            },
+        }
+    ]
+
+    with pytest.raises(
+        RuntimeError, match=r"Error Code insufficient_quota: You exceeded your current quota\."
+    ):
+        await process_openai_responses_event_stream(_aiter(events), output, stream, model)

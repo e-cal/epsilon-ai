@@ -10,6 +10,7 @@ import httpx
 
 from ..env_api_keys import get_env_api_key
 from ..event_stream import AssistantMessageEventStream, create_assistant_message_event_stream
+from ..models import supports_xhigh
 from ..runtime import RequestAbortedError, is_signal_aborted, maybe_await, raise_if_signal_aborted
 from ..types import (
     Context,
@@ -27,10 +28,15 @@ from .openai_responses_shared import (
     process_openai_responses_event_stream,
 )
 from .shared import create_empty_assistant_message, start_background_task
-from .simple_options import build_base_options, clamp_reasoning
+from .simple_options import (
+    build_base_options,
+    clamp_reasoning,
+    coerce_stream_options,
+    stream_options_to_kwargs,
+)
 from .sse import iterate_sse_messages
 
-AZURE_TOOL_CALL_PROVIDERS = {"azure-openai-responses"}
+AZURE_TOOL_CALL_PROVIDERS = {"openai", "openai-codex", "opencode", "azure-openai-responses"}
 DEFAULT_AZURE_API_VERSION = "v1"
 
 
@@ -47,10 +53,11 @@ class AzureOpenAIResponsesOptions(StreamOptions):
 def stream_azure_openai_responses(
     model: Model,
     context: Context,
-    options: AzureOpenAIResponsesOptions | None = None,
+    options: AzureOpenAIResponsesOptions | StreamOptions | None = None,
 ):
+    resolved_options = coerce_stream_options(options, AzureOpenAIResponsesOptions)
     stream = create_assistant_message_event_stream()
-    start_background_task(_run_azure_openai_responses(stream, model, context, options))
+    start_background_task(_run_azure_openai_responses(stream, model, context, resolved_options))
     return stream
 
 
@@ -150,40 +157,46 @@ def stream_simple_azure_openai_responses(
         raise ValueError(f"No API key for provider: {model.provider}")
 
     base = build_base_options(model, options, api_key)
-    reasoning_effort = options.reasoning if options and model.reasoning else None
-    if reasoning_effort is not None and not model.id.startswith("gpt-5."):
+    reasoning_effort = options.reasoning if options else None
+    if reasoning_effort is not None and not supports_xhigh(model):
         reasoning_effort = clamp_reasoning(reasoning_effort)
 
     return stream_azure_openai_responses(
         model,
         context,
-        AzureOpenAIResponsesOptions(**base.__dict__, reasoning_effort=reasoning_effort),
+        AzureOpenAIResponsesOptions(
+            **stream_options_to_kwargs(base, AzureOpenAIResponsesOptions),
+            reasoning_effort=reasoning_effort,
+        ),
     )
 
 
 def build_azure_openai_responses_payload(
     model: Model,
     context: Context,
-    options: AzureOpenAIResponsesOptions | None = None,
+    options: AzureOpenAIResponsesOptions | StreamOptions | None = None,
 ) -> dict[str, object]:
+    resolved_options = coerce_stream_options(options, AzureOpenAIResponsesOptions)
     payload: dict[str, object] = {
         "model": model.id,
         "input": convert_responses_messages(model, context, AZURE_TOOL_CALL_PROVIDERS),
         "stream": True,
     }
-    if options and options.session_id:
-        payload["prompt_cache_key"] = options.session_id
-    if options and options.max_tokens is not None:
-        payload["max_output_tokens"] = options.max_tokens
-    if options and options.temperature is not None:
-        payload["temperature"] = options.temperature
+    if resolved_options and resolved_options.session_id:
+        payload["prompt_cache_key"] = resolved_options.session_id
+    if resolved_options and resolved_options.max_tokens is not None:
+        payload["max_output_tokens"] = resolved_options.max_tokens
+    if resolved_options and resolved_options.temperature is not None:
+        payload["temperature"] = resolved_options.temperature
     if context.tools:
         payload["tools"] = convert_responses_tools(context.tools)
     if model.reasoning:
-        if options and (options.reasoning_effort or options.reasoning_summary):
+        if resolved_options and (
+            resolved_options.reasoning_effort or resolved_options.reasoning_summary
+        ):
             payload["reasoning"] = {
-                "effort": options.reasoning_effort or "medium",
-                "summary": options.reasoning_summary or "auto",
+                "effort": resolved_options.reasoning_effort or "medium",
+                "summary": resolved_options.reasoning_summary or "auto",
             }
             payload["include"] = ["reasoning.encrypted_content"]
         else:

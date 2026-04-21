@@ -1,17 +1,27 @@
-# epsai
+# epsilon-ai
 
-`epsai` is the Python port of `~/projects/pi-mono/`.
+`epsilon-ai` is the Python port of `~/projects/pi-mono/`.
+
+PyPI distribution: `epsilon-ai`
+Python package/imports: `epsilon`
+
+## Current status
+
+- `epsilon.llm`: provider/router port is implemented for OpenAI Responses, OpenAI Codex Responses, Azure OpenAI Responses, Anthropic Messages, and the faux test provider. OAuth is ported for OpenAI Codex only. Parity sync against upstream includes Opus 4.7 adaptive thinking, `thinking_display`, separated tool cache control, OpenAI-compatible session cache headers, and Codex service tier handling.
+- `epsilon.agent`: runtime port is implemented with state, events, low-level loop APIs, tool execution, steering/follow-up queues, the stateful `Agent` wrapper, and guarded `after_tool_call` hook error handling in finalization.
+- `epsilon.coding_agent`: package scaffolding only. This is the next milestone.
+- `epsilon.tui`: package scaffolding only. Intentionally deferred until after the coding agent harness is usable end-to-end.
 
 ## Layout
 
-The repository now ships as one Python distribution with module-level divisions:
+The repository ships as one Python distribution with module-level divisions:
 
-- `epsai.llm`
-- `epsai.agent`
-- `epsai.coding_agent`
-- `epsai.tui`
+- `epsilon.llm`
+- `epsilon.agent`
+- `epsilon.coding_agent`
+- `epsilon.tui`
 
-The TypeScript monorepo remains the specification. Port behavior first, then refine architecture.
+The TypeScript monorepo is the specification. Port behavior first, then refine architecture.
 
 See `docs/project-framing.md` for repository-level conventions.
 

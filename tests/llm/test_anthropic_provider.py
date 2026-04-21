@@ -6,16 +6,16 @@ from typing import cast
 
 import pytest
 
-from epsai.llm import Context, Tool, UserMessage
-from epsai.llm.event_stream import AssistantMessageEventStream
-from epsai.llm.models import get_model
-from epsai.llm.providers.anthropic import (
+from epsilon.llm import Context, Tool, UserMessage
+from epsilon.llm.event_stream import AssistantMessageEventStream
+from epsilon.llm.models import get_model
+from epsilon.llm.providers.anthropic import (
     AnthropicOptions,
     build_anthropic_payload,
     process_anthropic_event_stream,
 )
-from epsai.llm.providers.shared import create_empty_assistant_message
-from epsai.llm.types import AssistantMessageEvent, ToolCall, ToolCallDeltaEvent
+from epsilon.llm.providers.shared import create_empty_assistant_message
+from epsilon.llm.types import AssistantMessageEvent, ToolCall, ToolCallDeltaEvent
 
 
 def _capture_stream_events(stream: AssistantMessageEventStream) -> list[AssistantMessageEvent]:

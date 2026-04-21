@@ -39,6 +39,10 @@ TextPhase = Literal["commentary", "final_answer"]
 @dataclass(slots=True)
 class OpenAIResponsesStreamOptions:
     service_tier: str | None = None
+    #: Optional resolver that picks the effective service tier given the tier
+    #: reported by the response and the tier requested on the outgoing payload.
+    #: Defaults to preferring the response-reported value when set.
+    resolve_service_tier: Callable[[str | None, str | None], str | None] | None = None
     apply_service_tier_pricing: Callable[[Usage, str | None], None] | None = None
 
 
@@ -482,13 +486,22 @@ async def process_openai_responses_event_stream(
                 )
             calculate_cost(model, output.usage)
             if options and options.apply_service_tier_pricing is not None:
+                response_service_tier = cast(str | None, response.get("service_tier"))
+                if options.resolve_service_tier is not None:
+                    effective_service_tier = options.resolve_service_tier(
+                        response_service_tier, options.service_tier
+                    )
+                else:
+                    effective_service_tier = response_service_tier or options.service_tier
                 options.apply_service_tier_pricing(
                     output.usage,
-                    cast(str | None, response.get("service_tier")) or options.service_tier,
+                    effective_service_tier,
                 )
             output.stop_reason = map_openai_responses_status(
                 cast(str | None, response.get("status"))
             )
+            if output.stop_reason == "error":
+                output.error_message = _get_openai_response_error_message(response)
             if (
                 any(block.type == "toolCall" for block in output.content)
                 and output.stop_reason == "stop"
@@ -497,23 +510,19 @@ async def process_openai_responses_event_stream(
             continue
 
         if event_type == "error":
-            code = event.get("code")
-            message = event.get("message")
+            error = cast(dict[str, Any], event.get("error") or {})
+            code = error.get("code") or event.get("code")
+            message = error.get("message") or event.get("message")
             raise RuntimeError(
                 f"Error Code {code}: {message}" if code or message else "Unknown error"
             )
 
         if event_type == "response.failed":
             response = cast(dict[str, Any], event.get("response") or {})
-            error = cast(dict[str, Any], response.get("error") or {})
-            details = cast(dict[str, Any], response.get("incomplete_details") or {})
-            if error:
-                raise RuntimeError(
-                    f"{error.get('code', 'unknown')}: {error.get('message', 'no message')}"
-                )
-            if details.get("reason"):
-                raise RuntimeError(f"incomplete: {details['reason']}")
-            raise RuntimeError("Unknown error (no error details in response)")
+            raise RuntimeError(
+                _get_openai_response_error_message(response)
+                or "Unknown error (no error details in response)"
+            )
 
 
 def map_openai_responses_status(status: str | None) -> StopReason:
@@ -526,6 +535,19 @@ def map_openai_responses_status(status: str | None) -> StopReason:
     if status in {"queued", "in_progress"}:
         return "stop"
     raise ValueError(f"Unhandled OpenAI Responses status: {status}")
+
+
+def _get_openai_response_error_message(response: dict[str, Any]) -> str | None:
+    error = cast(dict[str, Any], response.get("error") or {})
+    if error:
+        return f"{error.get('code', 'unknown')}: {error.get('message', 'no message')}"
+
+    details = cast(dict[str, Any], response.get("incomplete_details") or {})
+    reason = details.get("reason")
+    if reason:
+        return f"incomplete: {reason}"
+
+    return None
 
 
 def _encode_text_signature_v1(message_id: str, phase: TextPhase | None = None) -> str:

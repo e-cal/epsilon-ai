@@ -59,8 +59,23 @@ def calculate_cost(model: Model, usage: Usage) -> Cost:
 
 
 def supports_xhigh(model: Model) -> bool:
+    """Check if a model supports xhigh thinking level.
+
+    Supported today:
+    - GPT-5.2 / GPT-5.3 / GPT-5.4 model families
+    - Opus 4.6+ models (xhigh maps to adaptive effort "max" on Opus 4.6 and "xhigh" on Opus 4.7)
+    """
     return any(
-        part in model.id for part in ("gpt-5.2", "gpt-5.3", "gpt-5.4", "opus-4-6", "opus-4.6")
+        part in model.id
+        for part in (
+            "gpt-5.2",
+            "gpt-5.3",
+            "gpt-5.4",
+            "opus-4-6",
+            "opus-4.6",
+            "opus-4-7",
+            "opus-4.7",
+        )
     )
 
 

@@ -5,7 +5,7 @@ from typing import cast
 
 import pytest
 
-from epsai.llm import (
+from epsilon.llm import (
     Context,
     StreamOptions,
     TextContent,

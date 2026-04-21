@@ -45,11 +45,17 @@ from ..types import (
     ToolResultMessage,
 )
 from .shared import create_empty_assistant_message, start_background_task
-from .simple_options import adjust_max_tokens_for_thinking, build_base_options
+from .simple_options import (
+    adjust_max_tokens_for_thinking,
+    build_base_options,
+    coerce_stream_options,
+    stream_options_to_kwargs,
+)
 from .sse import iterate_sse_messages
 from .transform_messages import transform_messages
 
-AnthropicEffort = Literal["low", "medium", "high", "max"]
+AnthropicEffort = Literal["low", "medium", "high", "xhigh", "max"]
+AnthropicThinkingDisplay = Literal["summarized", "omitted"]
 CLAUDE_CODE_VERSION = "2.1.75"
 CLAUDE_CODE_TOOLS = [
     "Read",
@@ -78,6 +84,17 @@ class AnthropicOptions(StreamOptions):
     thinking_enabled: bool | None = None
     thinking_budget_tokens: int | None = None
     effort: AnthropicEffort | None = None
+    #: Controls how thinking content is returned in API responses.
+    #:
+    #: - "summarized": Thinking blocks contain summarized thinking text (default here).
+    #: - "omitted": Thinking blocks return an empty thinking field; the encrypted
+    #:   signature still travels back for multi-turn continuity. Use for faster
+    #:   time-to-first-text-token when your UI does not surface thinking.
+    #:
+    #: Note: Anthropic's API default for Claude Opus 4.7 and Claude Mythos Preview
+    #: is "omitted". We default to "summarized" here to keep behavior consistent
+    #: with older Claude 4 models. Set this explicitly to "omitted" to opt in.
+    thinking_display: AnthropicThinkingDisplay | None = None
     interleaved_thinking: bool | None = None
     tool_choice: Literal["auto", "any", "none"] | dict[str, str] | None = None
 
@@ -85,10 +102,11 @@ class AnthropicOptions(StreamOptions):
 def stream_anthropic(
     model: Model,
     context: Context,
-    options: AnthropicOptions | None = None,
+    options: AnthropicOptions | StreamOptions | None = None,
 ):
+    resolved_options = coerce_stream_options(options, AnthropicOptions)
     stream = create_assistant_message_event_stream()
-    start_background_task(_run_anthropic(stream, model, context, options))
+    start_background_task(_run_anthropic(stream, model, context, resolved_options))
     return stream
 
 
@@ -171,7 +189,12 @@ def stream_simple_anthropic(
     base = build_base_options(model, options, api_key)
     if not options or not options.reasoning:
         return stream_anthropic(
-            model, context, AnthropicOptions(**base.__dict__, thinking_enabled=False)
+            model,
+            context,
+            AnthropicOptions(
+                **stream_options_to_kwargs(base, AnthropicOptions),
+                thinking_enabled=False,
+            ),
         )
 
     if supports_adaptive_thinking(model.id):
@@ -179,7 +202,7 @@ def stream_simple_anthropic(
             model,
             context,
             AnthropicOptions(
-                **base.__dict__,
+                **stream_options_to_kwargs(base, AnthropicOptions),
                 thinking_enabled=True,
                 effort=map_thinking_level_to_effort(options.reasoning, model.id),
             ),
@@ -195,7 +218,7 @@ def stream_simple_anthropic(
         model,
         context,
         AnthropicOptions(
-            **base.__dict__,
+            **stream_options_to_kwargs(base, AnthropicOptions),
             max_tokens=max_tokens,
             thinking_enabled=True,
             thinking_budget_tokens=thinking_budget,
@@ -206,10 +229,14 @@ def stream_simple_anthropic(
 def build_anthropic_payload(
     model: Model,
     context: Context,
-    options: AnthropicOptions | None = None,
+    options: AnthropicOptions | StreamOptions | None = None,
     is_oauth_token_value: bool = False,
 ) -> dict[str, object]:
-    cache_control = get_cache_control(model.base_url, options.cache_retention if options else None)
+    resolved_options = coerce_stream_options(options, AnthropicOptions)
+    cache_control = get_cache_control(
+        model.base_url,
+        resolved_options.cache_retention if resolved_options else None,
+    )
     payload: dict[str, object] = {
         "model": model.id,
         "messages": convert_anthropic_messages(
@@ -219,7 +246,9 @@ def build_anthropic_payload(
             cache_control,
         ),
         "max_tokens": (
-            options.max_tokens if options and options.max_tokens else model.max_tokens // 3
+            resolved_options.max_tokens
+            if resolved_options and resolved_options.max_tokens
+            else model.max_tokens // 3
         ),
         "stream": True,
     }
@@ -250,32 +279,42 @@ def build_anthropic_payload(
             }
         ]
 
-    if options and options.temperature is not None and not options.thinking_enabled:
-        payload["temperature"] = options.temperature
+    if (
+        resolved_options
+        and resolved_options.temperature is not None
+        and not resolved_options.thinking_enabled
+    ):
+        payload["temperature"] = resolved_options.temperature
     if context.tools:
-        payload["tools"] = convert_anthropic_tools(context.tools, is_oauth_token_value)
+        payload["tools"] = convert_anthropic_tools(
+            context.tools, is_oauth_token_value, cache_control
+        )
     if model.reasoning:
-        if options and options.thinking_enabled:
+        if resolved_options and resolved_options.thinking_enabled:
+            # Default to "summarized" so Opus 4.7 and Mythos Preview behave like
+            # older Claude 4 models (whose API default is also "summarized").
+            display: AnthropicThinkingDisplay = resolved_options.thinking_display or "summarized"
             if supports_adaptive_thinking(model.id):
-                payload["thinking"] = {"type": "adaptive"}
-                if options.effort is not None:
-                    payload["output_config"] = {"effort": options.effort}
+                payload["thinking"] = {"type": "adaptive", "display": display}
+                if resolved_options.effort is not None:
+                    payload["output_config"] = {"effort": resolved_options.effort}
             else:
                 payload["thinking"] = {
                     "type": "enabled",
-                    "budget_tokens": options.thinking_budget_tokens or 1024,
+                    "budget_tokens": resolved_options.thinking_budget_tokens or 1024,
+                    "display": display,
                 }
-        elif options and options.thinking_enabled is False:
+        elif resolved_options and resolved_options.thinking_enabled is False:
             payload["thinking"] = {"type": "disabled"}
-    if options and options.metadata:
-        user_id = options.metadata.get("user_id")
+    if resolved_options and resolved_options.metadata:
+        user_id = resolved_options.metadata.get("user_id")
         if isinstance(user_id, str):
             payload["metadata"] = {"user_id": user_id}
-    if options and options.tool_choice is not None:
+    if resolved_options and resolved_options.tool_choice is not None:
         payload["tool_choice"] = (
-            {"type": options.tool_choice}
-            if isinstance(options.tool_choice, str)
-            else options.tool_choice
+            {"type": resolved_options.tool_choice}
+            if isinstance(resolved_options.tool_choice, str)
+            else resolved_options.tool_choice
         )
     return payload
 
@@ -405,10 +444,17 @@ def convert_anthropic_messages(
 
 
 def convert_anthropic_tools(
-    tools: list[Tool], is_oauth_token_value: bool
+    tools: list[Tool],
+    is_oauth_token_value: bool,
+    cache_control: dict[str, str] | None = None,
 ) -> list[dict[str, object]]:
-    return [
-        {
+    if not tools:
+        return []
+
+    converted: list[dict[str, object]] = []
+    last_index = len(tools) - 1
+    for index, tool in enumerate(tools):
+        entry: dict[str, object] = {
             "name": to_claude_code_name(tool.name) if is_oauth_token_value else tool.name,
             "description": tool.description,
             "input_schema": {
@@ -417,8 +463,10 @@ def convert_anthropic_tools(
                 "required": tool.parameters.get("required", []),
             },
         }
-        for tool in tools
-    ]
+        if cache_control and index == last_index:
+            entry["cache_control"] = cache_control
+        converted.append(entry)
+    return converted
 
 
 async def process_anthropic_event_stream(
@@ -719,16 +767,37 @@ async def _iterate_anthropic_events(
 
 
 def supports_adaptive_thinking(model_id: str) -> bool:
-    return any(part in model_id for part in ("opus-4-6", "opus-4.6", "sonnet-4-6", "sonnet-4.6"))
+    """Check if a model supports adaptive thinking (Opus 4.6+, Sonnet 4.6)."""
+    return any(
+        part in model_id
+        for part in (
+            "opus-4-6",
+            "opus-4.6",
+            "opus-4-7",
+            "opus-4.7",
+            "sonnet-4-6",
+            "sonnet-4.6",
+        )
+    )
 
 
 def map_thinking_level_to_effort(level: ThinkingLevel, model_id: str) -> AnthropicEffort:
+    """Map ThinkingLevel to Anthropic effort levels for adaptive thinking.
+
+    Note: effort "max" is only valid on Opus 4.6, while Opus 4.7 supports "xhigh".
+    """
     if level in {"minimal", "low"}:
         return "low"
     if level == "medium":
         return "medium"
-    if level == "xhigh" and any(part in model_id for part in ("opus-4-6", "opus-4.6")):
-        return "max"
+    if level == "high":
+        return "high"
+    if level == "xhigh":
+        if any(part in model_id for part in ("opus-4-6", "opus-4.6")):
+            return "max"
+        if any(part in model_id for part in ("opus-4-7", "opus-4.7")):
+            return "xhigh"
+        return "high"
     return "high"
 
 

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import fields
+from typing import Any, cast
+
 from ..types import Model, SimpleStreamOptions, StreamOptions, ThinkingLevel
 
 
@@ -24,6 +27,30 @@ def build_base_options(
         max_retry_delay_ms=options.max_retry_delay_ms if options else None,
         metadata=options.metadata if options else None,
     )
+
+
+def stream_options_to_kwargs[StreamOptionsT: StreamOptions](
+    options: StreamOptions | None,
+    target_type: type[StreamOptionsT],
+) -> dict[str, Any]:
+    if options is None:
+        return {}
+    return {
+        field.name: getattr(options, field.name)
+        for field in fields(target_type)
+        if hasattr(options, field.name)
+    }
+
+
+def coerce_stream_options[StreamOptionsT: StreamOptions](
+    options: StreamOptions | None,
+    target_type: type[StreamOptionsT],
+) -> StreamOptionsT | None:
+    if options is None:
+        return None
+    if isinstance(options, target_type):
+        return options
+    return cast(StreamOptionsT, target_type(**stream_options_to_kwargs(options, target_type)))
 
 
 def clamp_reasoning(effort: ThinkingLevel | None) -> ThinkingLevel | None:

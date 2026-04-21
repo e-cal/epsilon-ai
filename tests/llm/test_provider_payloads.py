@@ -2,19 +2,19 @@ from __future__ import annotations
 
 from typing import cast
 
-from epsai.llm import Context, ImageContent, TextContent, Tool, ToolResultMessage, UserMessage
-from epsai.llm.models import get_model
-from epsai.llm.providers.anthropic import AnthropicOptions, build_anthropic_payload
-from epsai.llm.providers.azure_openai_responses import (
+from epsilon.llm import Context, ImageContent, TextContent, Tool, ToolResultMessage, UserMessage
+from epsilon.llm.models import get_model
+from epsilon.llm.providers.anthropic import AnthropicOptions, build_anthropic_payload
+from epsilon.llm.providers.azure_openai_responses import (
     AzureOpenAIResponsesOptions,
     parse_deployment_name_map,
     resolve_deployment_name,
 )
-from epsai.llm.providers.openai_responses import (
+from epsilon.llm.providers.openai_responses import (
     OpenAIResponsesOptions,
     build_openai_responses_payload,
 )
-from epsai.llm.types import Message
+from epsilon.llm.types import Message
 
 
 def test_openai_responses_payload_includes_reasoning_and_tools() -> None:
@@ -101,7 +101,11 @@ def test_anthropic_payload_groups_tool_results_and_applies_cache_control() -> No
         AnthropicOptions(thinking_enabled=True, thinking_budget_tokens=2048),
     )
 
-    assert payload["thinking"] == {"type": "enabled", "budget_tokens": 2048}
+    assert payload["thinking"] == {
+        "type": "enabled",
+        "budget_tokens": 2048,
+        "display": "summarized",
+    }
     system_blocks = payload["system"]
     assert isinstance(system_blocks, list)
     assert system_blocks[0]["cache_control"] == {"type": "ephemeral"}

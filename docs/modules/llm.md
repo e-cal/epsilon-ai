@@ -1,10 +1,11 @@
-# `epsai.llm`
+# `epsilon.llm`
 
 Unified LLM API for the Python port with model discovery, provider routing, streaming assistant events, tool calling, token and cost tracking, and transferable conversation context.
 
 This package currently targets parity for a limited provider set:
 
 - OpenAI Responses API
+- OpenAI Codex Responses API (with OAuth)
 - Azure OpenAI Responses API
 - Anthropic Messages API
 - Faux test provider
@@ -14,13 +15,14 @@ Only tool-capable models are included.
 ## Supported Providers
 
 - `openai`
+- `openai-codex`
 - `azure-openai-responses`
 - `anthropic`
 - `faux` via `register_faux_provider()` for tests
 
 ## Installation
 
-This module ships inside the `epsai` distribution.
+This module ships inside the `epsilon-ai` distribution.
 
 From the repo root:
 
@@ -33,7 +35,7 @@ uv sync
 ```python
 import asyncio
 
-from epsai.llm import (
+from epsilon.llm import (
     Context,
     StreamOptions,
     TextContent,
@@ -47,7 +49,7 @@ from epsai.llm import (
 
 
 async def main() -> None:
-    model = get_model("openai", "gpt-4o-mini")
+    model = get_model("openai", "gpt-5.3-codex")
 
     tools = [
         Tool(
@@ -139,7 +141,7 @@ During `toolcall_delta`, `event.partial.content[event.content_index]` contains t
 Tools are plain structured definitions:
 
 ```python
-from epsai.llm import Tool
+from epsilon.llm import Tool
 
 tool = Tool(
     name="get_weather",
@@ -169,29 +171,46 @@ Models advertise supported input types via `model.input`.
 Use the simplified interface for cross-provider reasoning control:
 
 ```python
-from epsai.llm import Context, SimpleStreamOptions, complete_simple, get_model
+import asyncio
 
-model = get_model("anthropic", "claude-sonnet-4-5")
+from epsilon.llm import Context, SimpleStreamOptions, complete_simple, get_model
 
-response = await complete_simple(
-    model,
-    Context(messages=[]),
-    SimpleStreamOptions(reasoning="medium"),
-)
+
+async def main() -> None:
+    model = get_model("anthropic", "claude-sonnet-4-5")
+
+    response = await complete_simple(
+        model,
+        Context(messages=[]),
+        SimpleStreamOptions(reasoning="medium"),
+    )
+
+
+asyncio.run(main())
 ```
 
 Provider-specific options are also exposed:
 
 - `OpenAIResponsesOptions`
+- `OpenAICodexResponsesOptions`
 - `AzureOpenAIResponsesOptions`
-- `AnthropicOptions`
+- `AnthropicOptions` (with `AnthropicEffort` and `AnthropicThinkingDisplay`)
 
 Not every provider uses the same native reasoning controls, but the package maps them onto shared event/content semantics.
+
+### Anthropic thinking display
+
+`AnthropicOptions.thinking_display` controls how thinking content is returned:
+
+- `"summarized"` (default here): thinking blocks contain summarized thinking text
+- `"omitted"`: thinking blocks return an empty thinking field; the encrypted signature still travels back for multi-turn continuity
+
+Anthropic's native default for Opus 4.7 is `"omitted"`; the port overrides the default to `"summarized"` to match older Claude 4 behavior, mirroring upstream.
 
 ## Models and Providers
 
 ```python
-from epsai.llm import get_model, get_models, get_providers
+from epsilon.llm import get_model, get_models, get_providers
 
 providers = get_providers()
 openai_models = get_models("openai")
@@ -236,7 +255,7 @@ gpt-4o-mini=prod-mini,gpt-5-mini=prod-five
 The faux provider is intended for deterministic tests and local harnesses.
 
 ```python
-from epsai.llm import faux_assistant_message, register_faux_provider
+from epsilon.llm import faux_assistant_message, register_faux_provider
 
 registration = register_faux_provider()
 registration.set_responses([faux_assistant_message("hello")])
@@ -257,7 +276,7 @@ Built-in provider registration is currently not lazy.
 
 What that means:
 
-- importing `epsai.llm.stream` registers built-in providers immediately
+- importing `epsilon.llm.stream` registers built-in providers immediately
 - the built-in provider modules are imported eagerly during that registration path
 - missing or broken imports in those built-in provider modules fail at import time rather than the first call to a specific provider
 - startup/import cost is slightly higher than the upstream TS package, which uses lazy registration wrappers
@@ -273,4 +292,13 @@ This is a known structural difference from upstream, not a behavioral limitation
 
 - The module aims at parity with `pi-mono/packages/ai` for the selected providers only
 - OpenAI Responses and Azure OpenAI Responses share most response semantics but still differ in auth, base URL, API version, and deployment handling
-- The Python source lives at `epsai/llm/`
+- OpenAI Codex Responses is available for ChatGPT-account-backed OAuth usage and is kept in lockstep with upstream service-tier handling
+- The Python source lives at `epsilon/llm/`
+
+## Recent upstream parity sync
+
+- Anthropic: Opus 4.7 added to `supports_xhigh` and adaptive thinking; `AnthropicEffort` now includes `"xhigh"`; thinking config carries a `display` field (`"summarized"` / `"omitted"`); tool cache control is attached to the last tool definition separately from the transcript cache control (pi-mono d1c6cb1e, acbf8eca, 1c016cb0)
+- OpenAI Responses / Codex: `session_id` and `x-client-request-id` headers are now set on every openai-responses call whenever a `session_id` is supplied and cache retention is not `"none"` (pi-mono 45f1a2cd, 018b40c3)
+- OpenAI Codex: `service_tier` is accepted in `OpenAICodexResponsesOptions` and propagated to the payload and pricing path, including the "trust requested tier" resolver (pi-mono f829f808, 2cdac738)
+- `OPENAI_TOOL_CALL_PROVIDERS` and `AZURE_TOOL_CALL_PROVIDERS` now match the upstream allowed-provider sets for tool-call id normalization
+- `stream_simple_openai_responses` and `stream_simple_azure_openai_responses` gate xhigh via `supports_xhigh(model)` instead of a hard-coded model id prefix

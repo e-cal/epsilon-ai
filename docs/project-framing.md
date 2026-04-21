@@ -6,19 +6,19 @@ This document captures early repository-level decisions for Epsilon AI Framework
 
 The repository uses a single Python distribution with module boundaries that mirror the upstream package split where practical:
 
-- `epsai/llm/` → Python LLM client / provider layer
-- `epsai/agent/` → Python agent framework
-- `epsai/coding_agent/` → Python coding harness / CLI
-- `epsai/tui/` → Python terminal UI support
+- `epsilon/llm/` → Python LLM client / provider layer
+- `epsilon/agent/` → Python agent framework
+- `epsilon/coding_agent/` → Python coding harness / CLI
+- `epsilon/tui/` → Python terminal UI support
 
 Tests live under `tests/`, grouped by module.
 
 Python import module names:
 
-- `epsai.llm`
-- `epsai.agent`
-- `epsai.coding_agent`
-- `epsai.tui`
+- `epsilon.llm`
+- `epsilon.agent`
+- `epsilon.coding_agent`
+- `epsilon.tui`
 
 ## Tooling
 
@@ -53,12 +53,11 @@ Repository-level tooling decisions:
 
 ### Schema and validation strategy
 
-This remains the main open framing decision.
-
-Current recommendation:
+Current baseline:
 
 - use plain Python dataclasses for internal state/models
 - use JSON Schema-compatible `dict` definitions for tool/input schemas when parity with upstream matters
 - use a lightweight runtime validator rather than a model framework as the primary abstraction
+- `epsilon.agent.validation` now provides the first concrete implementation of that approach for tool-argument validation
 
-Open question: choose the primary runtime validation layer for schemas and tool arguments.
+Open follow-up: decide when to extract that validator into a shared cross-module utility instead of keeping it local to `epsilon.agent`.

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from epsai.llm import get_model, get_models, get_providers, register_faux_provider
+from epsilon.llm import get_model, get_models, get_providers, register_faux_provider
 
 
 def test_faux_provider_registers_models() -> None:

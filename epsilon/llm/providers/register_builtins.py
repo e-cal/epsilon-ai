@@ -9,6 +9,11 @@ from .azure_openai_responses import (
     stream_azure_openai_responses,
     stream_simple_azure_openai_responses,
 )
+from .openai_codex_responses import (
+    OpenAICodexResponsesOptions,
+    stream_openai_codex_responses,
+    stream_simple_openai_codex_responses,
+)
 from .openai_responses import (
     OpenAIResponsesOptions,
     stream_openai_responses,
@@ -56,6 +61,21 @@ def register_built_in_api_providers() -> None:
                 cast(AzureOpenAIResponsesOptions | None, options),
             ),
             stream_simple=lambda model, context, options=None: stream_simple_azure_openai_responses(
+                model,
+                context,
+                options,
+            ),
+        )
+    )
+    register_api_provider(
+        ApiProvider(
+            api="openai-codex-responses",
+            stream=lambda model, context, options=None: stream_openai_codex_responses(
+                model,
+                context,
+                cast(OpenAICodexResponsesOptions | None, options),
+            ),
+            stream_simple=lambda model, context, options=None: stream_simple_openai_codex_responses(
                 model,
                 context,
                 options,

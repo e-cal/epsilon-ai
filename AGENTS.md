@@ -5,10 +5,10 @@ This repository is an early-stage Python port of `~/projects/pi-mono/`.
 Primary goal: achieve 1:1 feature and behavior parity with the TypeScript monorepo while keeping the Python codebase clean, explicit, and readable.
 
 Primary target scope for the port:
-- `epsai.llm` -> Python LLM client / provider layer
-- `epsai.agent` -> Python agent framework
-- `epsai.coding_agent` -> Python coding agent harness / CLI
-- `epsai.tui` -> Python terminal UI support needed by the coding agent
+- `epsilon.llm` -> Python LLM client / provider layer
+- `epsilon.agent` -> Python agent framework
+- `epsilon.coding_agent` -> Python coding agent harness / CLI
+- `epsilon.tui` -> Python terminal UI support needed by the coding agent
 
 Out of scope for now unless the user explicitly asks:
 - `packages/mom`
@@ -35,6 +35,16 @@ Relevant upstream docs:
 - `pi-mono/packages/agent/README.md`
 - `pi-mono/packages/coding-agent/README.md`
 - `pi-mono/packages/tui/README.md` when the work touches terminal UI
+
+## Reference Repo Sync
+`~/projects/pi-mono/` is the upstream reference and changes frequently. At the start of every session, before doing any parity work:
+1. `git -C ~/projects/pi-mono fetch` and check for new commits on the tracked branch
+2. If there are new upstream commits, pull them: `git -C ~/projects/pi-mono pull --ff-only`
+3. Skim the new commit log for anything that touches the modules currently in scope (`ai`, `agent`, `coding-agent`, `tui`)
+4. Note any upstream changes that might require re-port work before editing Python code
+5. Never force/rebase/modify the reference repo; only fast-forward pulls
+
+If the user reports they just pulled new upstream commits mid-session, repeat the sync check before continuing parity work.
 
 ## Core Porting Rules
 - Preserve user-visible behavior from `pi-mono` unless the user asks otherwise
@@ -71,20 +81,21 @@ Relevant upstream docs:
 
 ## Project Structure
 The Python port ships as a single distribution with module-level boundaries:
-- `epsai/llm/`
-- `epsai/agent/`
-- `epsai/coding_agent/`
-- `epsai/tui/`
+- `epsilon/llm/`
+- `epsilon/agent/`
+- `epsilon/coding_agent/`
+- `epsilon/tui/`
 - `tests/llm/`
+- `tests/agent/`
 
 Python import module names:
-- `epsai.llm`
-- `epsai.agent`
-- `epsai.coding_agent`
-- `epsai.tui`
+- `epsilon.llm`
+- `epsilon.agent`
+- `epsilon.coding_agent`
+- `epsilon.tui`
 
 Layout preference:
-- Keep Python code inside `epsai/`
+- Keep Python code inside `epsilon/`
 - Keep tests inside `tests/`
 - Avoid JS-style `src/` nesting unless there is a clear Python-specific reason and the user agrees
 
@@ -123,9 +134,11 @@ Rules:
 - For coding-agent integration tests, prefer faux/fake providers over real provider APIs
 - Do not require paid tokens or live API keys in tests
 - When porting behavior, add regression tests for subtle upstream semantics
+- Any runnable example added to `README.md` or `docs/` must have a regression test that executes the example as documented, or as close as possible with deterministic fakes when the example would otherwise require live provider credentials
+- Changes to public examples should be treated as broken until the matching example test passes; examples must work as advertised
 
 ## AI Provider Scope (current)
-For the initial `epsai.llm` port, prioritize only:
+For the initial `epsilon.llm` port, prioritize only:
 - OpenAI via the Responses API
 - Anthropic Messages API
 - Azure OpenAI Responses API
