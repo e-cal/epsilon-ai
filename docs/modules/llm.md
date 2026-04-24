@@ -6,17 +6,36 @@ This package currently targets parity for a limited provider set:
 
 - OpenAI Responses API
 - OpenAI Codex Responses API (with OAuth)
-- Azure OpenAI Responses API
+- Foundry
 - Anthropic Messages API
 - Faux test provider
 
 Only tool-capable models are included.
 
+## Intended Deviations
+
+This module intentionally deviates from `pi-mono/packages/ai` in its public API shape.
+
+- Upstream exposes separate simplified and provider-native entrypoints (`streamSimple` / `completeSimple` alongside `stream` / `complete`)
+- `epsilon.llm` exposes a single streaming entrypoint `stream()`, plus `complete()` for synchronous completion and `complete_async()` for async completion
+- `StreamOptions(...)` is the normalized portable options type, including cross-provider reasoning controls like `reasoning` and `thinking_budgets`
+- `epsilon.llm` exposes a Python-specific public reasoning enum surface: `ReasoningLevel = Literal["none", "minimal", "low", "medium", "high", "max", "xhigh"]`
+- `epsilon.llm` also exports `REASONING_LEVELS` as the canonical runtime list of valid public reasoning values so callers do not need to introspect the `Literal` alias
+- This reasoning API intentionally differs from upstream naming: public `"none"` behaves like omitting reasoning entirely, and public `"max"` or `"xhigh"` both map to the same top-end provider level where applicable
+- Provider-native option subclasses such as `OpenAIResponsesOptions` and `AnthropicOptions` are still available when you need direct control of provider-specific fields
+
+Operational rule:
+
+- Pass plain `StreamOptions(...)` when you want the library to normalize reasoning/thinking controls across providers
+- Pass a provider-specific subclass when you want native provider semantics
+
+This is an intended design choice, not an incomplete port. The internal provider layer is responsible for handling both cases through the normal `stream()` / completion path.
+
 ## Supported Providers
 
 - `openai`
 - `openai-codex`
-- `azure-openai-responses`
+- `foundry`
 - `anthropic`
 - `faux` via `register_faux_provider()` for tests
 
@@ -42,7 +61,7 @@ from epsilon.llm import (
     Tool,
     ToolResultMessage,
     UserMessage,
-    complete,
+    complete_async,
     get_model,
     stream,
 )
@@ -104,7 +123,7 @@ async def main() -> None:
         )
 
     if tool_calls:
-        continuation = await complete(model, context)
+        continuation = await complete_async(model, context)
         context.messages.append(continuation)
 
 
@@ -133,8 +152,14 @@ During `toolcall_delta`, `event.partial.content[event.content_index]` contains t
 ## Complete vs Stream
 
 - `stream(model, context, options)` returns an `AssistantMessageEventStream`
-- `complete(model, context, options)` returns the final `AssistantMessage`
-- `stream_simple(...)` and `complete_simple(...)` expose the simplified reasoning interface
+- `complete(model, context, options)` runs synchronously and returns the final `AssistantMessage`
+- `complete_async(model, context, options)` returns the final `AssistantMessage` for async callers
+- Pass `StreamOptions(reasoning=...)` for provider-agnostic reasoning control
+- Pass a provider-specific `StreamOptions` subclass when you need native provider fields
+
+Use `complete_async()` inside existing asyncio code. `complete()` is the synchronous wrapper.
+
+This differs intentionally from upstream, which keeps a separate simplified API surface.
 
 ## Tools
 
@@ -168,35 +193,36 @@ Models advertise supported input types via `model.input`.
 
 ## Thinking / Reasoning
 
-Use the simplified interface for cross-provider reasoning control:
+Use `StreamOptions` for cross-provider reasoning control:
 
 ```python
-import asyncio
-
-from epsilon.llm import Context, SimpleStreamOptions, complete_simple, get_model
+from epsilon.llm import Context, StreamOptions, complete, get_model
 
 
-async def main() -> None:
-    model = get_model("anthropic", "claude-sonnet-4-5")
+model = get_model("anthropic", "claude-sonnet-4-5")
 
-    response = await complete_simple(
-        model,
-        Context(messages=[]),
-        SimpleStreamOptions(reasoning="medium"),
-    )
-
-
-asyncio.run(main())
+response = complete(
+    model,
+    Context(messages=[]),
+    StreamOptions(reasoning="medium"),
+)
 ```
 
 Provider-specific options are also exposed:
 
 - `OpenAIResponsesOptions`
 - `OpenAICodexResponsesOptions`
-- `AzureOpenAIResponsesOptions`
+- `FoundryOptions`
 - `AnthropicOptions` (with `AnthropicEffort` and `AnthropicThinkingDisplay`)
 
 Not every provider uses the same native reasoning controls, but the package maps them onto shared event/content semantics.
+
+Intentional deviation from upstream:
+
+- Import `ReasoningLevel` for the public type alias
+- Import `REASONING_LEVELS` when you need the runtime list of valid values
+- Both `"max"` and `"xhigh"` are accepted on the user-facing API and normalize to the same behavior
+- Prefer `"max"` in docs and examples; `"xhigh"` is accepted as an alias for intuition/backwards-familiarity
 
 ### Anthropic thinking display
 
@@ -230,25 +256,32 @@ The built-in model catalog currently includes the upstream-relevant selected-pro
 - `ANTHROPIC_API_KEY`
 - `ANTHROPIC_OAUTH_TOKEN`
 
-### Azure OpenAI Responses
+### Foundry
 
-- `AZURE_OPENAI_API_KEY`
-- `AZURE_OPENAI_BASE_URL`
+- `FOUNDRY_API_KEY`
+- `FOUNDRY_OPENAI_BASE_URL`
+- `FOUNDRY_ANTHROPIC_BASE_URL`
 or
-- `AZURE_OPENAI_RESOURCE_NAME`
+- `FOUNDRY_PROJECT`
 
-Optional Azure settings:
+Optional Foundry settings:
 
-- `AZURE_OPENAI_API_VERSION`
-- `AZURE_OPENAI_DEPLOYMENT_NAME_MAP`
+- `FOUNDRY_API_VERSION`
+- `FOUNDRY_DEPLOYMENT_NAME_MAP`
 
-`AZURE_OPENAI_DEPLOYMENT_NAME_MAP` uses `model_id=deployment_name` pairs separated by commas.
+`FOUNDRY_DEPLOYMENT_NAME_MAP` uses `model_id=deployment_name` pairs separated by commas.
 
 Example:
 
 ```text
 gpt-4o-mini=prod-mini,gpt-5-mini=prod-five
 ```
+
+Foundry endpoint selection:
+
+- Claude models default to the Foundry Anthropic endpoint
+- Other models default to the OpenAI-compatible Foundry endpoint
+- Use `FoundryOptions(foundry_endpoint="anthropic")` or `FoundryOptions(foundry_endpoint="openai")` when a custom deployment name needs an explicit route
 
 ## Faux Provider
 
@@ -291,7 +324,7 @@ This is a known structural difference from upstream, not a behavioral limitation
 ## Current Scope Notes
 
 - The module aims at parity with `pi-mono/packages/ai` for the selected providers only
-- OpenAI Responses and Azure OpenAI Responses share most response semantics but still differ in auth, base URL, API version, and deployment handling
+- Foundry reuses the OpenAI-compatible Responses transport for GPT-style and other OpenAI-compatible deployments, and the Anthropic Messages transport for Claude deployments
 - OpenAI Codex Responses is available for ChatGPT-account-backed OAuth usage and is kept in lockstep with upstream service-tier handling
 - The Python source lives at `epsilon/llm/`
 
@@ -300,5 +333,5 @@ This is a known structural difference from upstream, not a behavioral limitation
 - Anthropic: Opus 4.7 added to `supports_xhigh` and adaptive thinking; `AnthropicEffort` now includes `"xhigh"`; thinking config carries a `display` field (`"summarized"` / `"omitted"`); tool cache control is attached to the last tool definition separately from the transcript cache control (pi-mono d1c6cb1e, acbf8eca, 1c016cb0)
 - OpenAI Responses / Codex: `session_id` and `x-client-request-id` headers are now set on every openai-responses call whenever a `session_id` is supplied and cache retention is not `"none"` (pi-mono 45f1a2cd, 018b40c3)
 - OpenAI Codex: `service_tier` is accepted in `OpenAICodexResponsesOptions` and propagated to the payload and pricing path, including the "trust requested tier" resolver (pi-mono f829f808, 2cdac738)
-- `OPENAI_TOOL_CALL_PROVIDERS` and `AZURE_TOOL_CALL_PROVIDERS` now match the upstream allowed-provider sets for tool-call id normalization
-- `stream_simple_openai_responses` and `stream_simple_azure_openai_responses` gate xhigh via `supports_xhigh(model)` instead of a hard-coded model id prefix
+- `OPENAI_TOOL_CALL_PROVIDERS` and the Foundry OpenAI-compatible transport now accept the upstream allowed-provider sets for tool-call id normalization
+- OpenAI-compatible reasoning normalization still gates xhigh via `supports_xhigh(model)` instead of a hard-coded model id prefix

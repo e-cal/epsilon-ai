@@ -12,6 +12,13 @@ Current implementation:
 - `before_tool_call` and `after_tool_call` hooks
 - steering and follow-up queues plus queue clearing helpers
 
+## Intended Deviations
+
+- Upstream `continue()` is exposed as `continue_()` because `continue` is a Python keyword
+- The agent uses `epsilon.llm.stream()` directly; there is no separate internal `stream_simple()` path in the Python port
+
+These are intentional API adaptations for Python, not missing parity work.
+
 Python-specific note:
 
 - upstream `continue()` is exposed as `continue_()` because `continue` is a Python keyword

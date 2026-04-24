@@ -244,12 +244,6 @@ def register_faux_provider(
                 context,
                 options,
             ),
-            stream_simple=lambda model, context, options=None: _stream_faux(
-                registration,
-                model,
-                context,
-                options,
-            ),
         )
     )
     return registration

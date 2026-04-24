@@ -36,6 +36,8 @@ Relevant upstream docs:
 - `pi-mono/packages/coding-agent/README.md`
 - `pi-mono/packages/tui/README.md` when the work touches terminal UI
 
+> Note: fff will only work for this repo. Use grep and other builtin tools for working with ~/projects/pi-mono
+
 ## Reference Repo Sync
 `~/projects/pi-mono/` is the upstream reference and changes frequently. At the start of every session, before doing any parity work:
 1. `git -C ~/projects/pi-mono fetch` and check for new commits on the tracked branch

@@ -9,18 +9,21 @@ from typing import cast
 
 from ..llm.event_stream import EventStream
 from ..llm.runtime import maybe_await
-from ..llm.stream import stream_simple
+from ..llm.stream import stream
 from ..llm.types import (
     AssistantMessage,
     Context,
     ImageContent,
-    SimpleStreamOptions,
+    StreamOptions,
     TextContent,
     ToolCall,
     ToolResultMessage,
 )
 from ..llm.types import (
-    ThinkingLevel as LlmThinkingLevel,
+    ReasoningLevel as LlmReasoningLevel,
+)
+from ..llm.types import (
+    resolve_reasoning_level as resolve_llm_reasoning_level,
 )
 from .types import (
     UNSET,
@@ -39,8 +42,8 @@ from .types import (
     MessageEndEvent,
     MessageStartEvent,
     MessageUpdateEvent,
+    ReasoningLevel,
     StreamFn,
-    ThinkingLevel,
     ToolExecutionEndEvent,
     ToolExecutionStartEvent,
     ToolExecutionUpdateEvent,
@@ -273,7 +276,7 @@ async def _stream_assistant_response(
         dynamic_key = await maybe_await(config.get_api_key(config.model.provider))
         resolved_api_key = dynamic_key or resolved_api_key
 
-    stream_options = SimpleStreamOptions(
+    stream_options = StreamOptions(
         temperature=config.temperature,
         max_tokens=config.max_tokens,
         signal=signal,
@@ -289,7 +292,7 @@ async def _stream_assistant_response(
         thinking_budgets=_normalize_thinking_budgets(config.thinking_budgets),
     )
 
-    response = (stream_fn or stream_simple)(config.model, llm_context, stream_options)
+    response = (stream_fn or stream)(config.model, llm_context, stream_options)
 
     partial_message: AssistantMessage | None = None
     added_partial = False
@@ -691,16 +694,17 @@ async def _get_pending_messages(getter) -> list[AgentMessage]:
 
 
 def _normalize_thinking_budgets(
-    budgets: dict[ThinkingLevel, int] | None,
-) -> dict[LlmThinkingLevel, int] | None:
+    budgets: dict[ReasoningLevel, int] | None,
+) -> dict[LlmReasoningLevel, int] | None:
     if budgets is None:
         return None
 
-    normalized: dict[LlmThinkingLevel, int] = {}
+    normalized: dict[LlmReasoningLevel, int] = {}
     for key, value in budgets.items():
-        if key == "off":
+        resolved = resolve_llm_reasoning_level(key)
+        if resolved is None:
             continue
-        normalized[cast(LlmThinkingLevel, key)] = value
+        normalized[resolved] = value
     return normalized
 
 

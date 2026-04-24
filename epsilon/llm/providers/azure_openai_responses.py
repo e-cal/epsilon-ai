@@ -4,7 +4,7 @@ import json
 import os
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 import httpx
 
@@ -17,9 +17,9 @@ from ..types import (
     DoneEvent,
     ErrorEvent,
     Model,
-    SimpleStreamOptions,
     StartEvent,
     StreamOptions,
+    resolve_reasoning_level,
 )
 from .openai_responses_shared import (
     OpenAIResponsesStreamOptions,
@@ -36,7 +36,14 @@ from .simple_options import (
 )
 from .sse import iterate_sse_messages
 
-AZURE_TOOL_CALL_PROVIDERS = {"openai", "openai-codex", "opencode", "azure-openai-responses"}
+AZURE_TOOL_CALL_PROVIDERS = {
+    "openai",
+    "codex",
+    "openai-codex",
+    "opencode",
+    "azure-openai-responses",
+    "foundry",
+}
 DEFAULT_AZURE_API_VERSION = "v1"
 
 
@@ -55,7 +62,7 @@ def stream_azure_openai_responses(
     context: Context,
     options: AzureOpenAIResponsesOptions | StreamOptions | None = None,
 ):
-    resolved_options = coerce_stream_options(options, AzureOpenAIResponsesOptions)
+    resolved_options = _resolve_azure_openai_responses_options(model, options)
     stream = create_assistant_message_event_stream()
     start_background_task(_run_azure_openai_responses(stream, model, context, resolved_options))
     return stream
@@ -136,7 +143,7 @@ async def _run_azure_openai_responses(
         stream.end(output)
     except Exception as exc:
         output.stop_reason = "aborted" if _is_abort_error(exc, options) else "error"
-        output.error_message = str(exc)
+        output.error_message = await _format_azure_openai_error(exc)
         stream.push(
             ErrorEvent(
                 reason=cast(Literal["aborted", "error"], output.stop_reason),
@@ -146,28 +153,25 @@ async def _run_azure_openai_responses(
         stream.end(output)
 
 
-def stream_simple_azure_openai_responses(
+def _resolve_azure_openai_responses_options(
     model: Model,
-    context: Context,
-    options: SimpleStreamOptions | None = None,
-):
-    api_key = options.api_key if options else None
-    api_key = api_key or get_env_api_key(model.provider)
-    if not api_key:
-        raise ValueError(f"No API key for provider: {model.provider}")
+    options: AzureOpenAIResponsesOptions | StreamOptions | None,
+) -> AzureOpenAIResponsesOptions | None:
+    if options is None:
+        return None
+    if isinstance(options, AzureOpenAIResponsesOptions):
+        return options
+    if type(options) is not StreamOptions:
+        return coerce_stream_options(options, AzureOpenAIResponsesOptions)
 
-    base = build_base_options(model, options, api_key)
-    reasoning_effort = options.reasoning if options else None
+    base = build_base_options(model, options, options.api_key)
+    reasoning_effort = resolve_reasoning_level(options.reasoning)
     if reasoning_effort is not None and not supports_xhigh(model):
         reasoning_effort = clamp_reasoning(reasoning_effort)
 
-    return stream_azure_openai_responses(
-        model,
-        context,
-        AzureOpenAIResponsesOptions(
-            **stream_options_to_kwargs(base, AzureOpenAIResponsesOptions),
-            reasoning_effort=reasoning_effort,
-        ),
+    return AzureOpenAIResponsesOptions(
+        **stream_options_to_kwargs(base, AzureOpenAIResponsesOptions),
+        reasoning_effort=reasoning_effort,
     )
 
 
@@ -188,6 +192,19 @@ def build_azure_openai_responses_payload(
         payload["max_output_tokens"] = resolved_options.max_tokens
     if resolved_options and resolved_options.temperature is not None:
         payload["temperature"] = resolved_options.temperature
+    if resolved_options and resolved_options.top_p is not None:
+        payload["top_p"] = resolved_options.top_p
+    if resolved_options and (
+        resolved_options.text_verbosity is not None or resolved_options.text_format is not None
+    ):
+        text: dict[str, object] = {}
+        if resolved_options.text_verbosity is not None:
+            text["verbosity"] = resolved_options.text_verbosity
+        if resolved_options.text_format is not None:
+            text["format"] = resolved_options.text_format
+        payload["text"] = text
+    if resolved_options and resolved_options.metadata is not None:
+        payload["metadata"] = resolved_options.metadata
     if context.tools:
         payload["tools"] = convert_responses_tools(context.tools)
     if model.reasoning:
@@ -270,3 +287,61 @@ def _is_abort_error(exc: Exception, options: AzureOpenAIResponsesOptions | None)
     return isinstance(exc, RequestAbortedError) or is_signal_aborted(
         options.signal if options else None
     )
+
+
+async def _format_azure_openai_error(exc: Exception) -> str:
+    if not isinstance(exc, httpx.HTTPStatusError):
+        return str(exc)
+
+    response = exc.response
+    detail = await _extract_azure_openai_error_detail(response)
+    if detail:
+        return f"{exc}. Response body: {detail}"
+    return str(exc)
+
+
+async def _extract_azure_openai_error_detail(response: httpx.Response) -> str | None:
+    text = await _read_httpx_response_text(response)
+    text = text.strip()
+    if not text:
+        return None
+
+    try:
+        payload = response.json()
+    except json.JSONDecodeError:
+        return text
+
+    if not isinstance(payload, dict):
+        return text
+
+    error = payload.get("error")
+    if not isinstance(error, dict):
+        return text
+
+    message = error.get("message")
+    param = error.get("param")
+    code = error.get("code")
+
+    parts: list[str] = []
+    if isinstance(message, str) and message:
+        parts.append(message)
+    if isinstance(param, str) and param:
+        parts.append(f"param={param}")
+    if isinstance(code, str) and code:
+        parts.append(f"code={code}")
+    if parts:
+        return "; ".join(parts)
+
+    return _compact_json(payload)
+
+
+def _compact_json(payload: Any) -> str:
+    return json.dumps(payload, separators=(",", ":"), sort_keys=True)
+
+
+async def _read_httpx_response_text(response: httpx.Response) -> str:
+    try:
+        return response.text
+    except httpx.ResponseNotRead:
+        await response.aread()
+        return response.text

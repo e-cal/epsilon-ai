@@ -25,10 +25,11 @@ from ..types import (
     DoneEvent,
     ErrorEvent,
     Model,
-    SimpleStreamOptions,
+    ReasoningLevel,
     StartEvent,
     StreamOptions,
     Usage,
+    resolve_reasoning_level,
 )
 from .openai_responses_shared import (
     OpenAIResponsesStreamOptions,
@@ -47,7 +48,7 @@ from .sse import iterate_sse_messages
 DEFAULT_CODEX_BASE_URL = "https://chatgpt.com/backend-api"
 MAX_RETRIES = 3
 BASE_DELAY_MS = 1_000
-CODEX_TOOL_CALL_PROVIDERS = {"openai", "openai-codex", "opencode"}
+CODEX_TOOL_CALL_PROVIDERS = {"openai", "codex", "openai-codex", "opencode"}
 CODEX_RESPONSE_STATUSES = {
     "completed",
     "incomplete",
@@ -60,7 +61,7 @@ CODEX_RESPONSE_STATUSES = {
 
 @dataclass(slots=True)
 class OpenAICodexResponsesOptions(StreamOptions):
-    reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh"] | None = None
+    reasoning_effort: ReasoningLevel | None = None
     reasoning_summary: Literal["auto", "concise", "detailed", "off", "on"] | None = None
     service_tier: str | None = None
     text_verbosity: Literal["low", "medium", "high"] | None = None
@@ -71,7 +72,7 @@ def stream_openai_codex_responses(
     context: Context,
     options: OpenAICodexResponsesOptions | StreamOptions | None = None,
 ):
-    resolved_options = coerce_stream_options(options, OpenAICodexResponsesOptions)
+    resolved_options = _resolve_openai_codex_responses_options(model, options)
     stream = create_assistant_message_event_stream()
     start_background_task(_run_openai_codex_responses(stream, model, context, resolved_options))
     return stream
@@ -167,29 +168,25 @@ async def _run_openai_codex_responses(
             await response.aclose()
 
 
-def stream_simple_openai_codex_responses(
+def _resolve_openai_codex_responses_options(
     model: Model,
-    context: Context,
-    options: SimpleStreamOptions | None = None,
-):
-    api_key = options.api_key if options else None
-    api_key = api_key or get_env_api_key(model.provider)
-    if not api_key:
-        raise ValueError(f"No API key for provider: {model.provider}")
+    options: OpenAICodexResponsesOptions | StreamOptions | None,
+) -> OpenAICodexResponsesOptions | None:
+    if options is None:
+        return None
+    if isinstance(options, OpenAICodexResponsesOptions):
+        return options
+    if type(options) is not StreamOptions:
+        return coerce_stream_options(options, OpenAICodexResponsesOptions)
 
-    base = build_base_options(model, options, api_key)
-    reasoning_effort = (
-        options.reasoning
-        if options and supports_xhigh(model)
-        else clamp_reasoning(options.reasoning if options else None)
-    )
-    return stream_openai_codex_responses(
-        model,
-        context,
-        OpenAICodexResponsesOptions(
-            **stream_options_to_kwargs(base, OpenAICodexResponsesOptions),
-            reasoning_effort=reasoning_effort,
-        ),
+    base = build_base_options(model, options, options.api_key)
+    reasoning_effort = resolve_reasoning_level(options.reasoning)
+    if reasoning_effort is not None and not supports_xhigh(model):
+        reasoning_effort = clamp_reasoning(reasoning_effort)
+
+    return OpenAICodexResponsesOptions(
+        **stream_options_to_kwargs(base, OpenAICodexResponsesOptions),
+        reasoning_effort=cast(ReasoningLevel | None, reasoning_effort),
     )
 
 
@@ -201,7 +198,7 @@ def build_openai_codex_responses_payload(
     resolved_options = coerce_stream_options(options, OpenAICodexResponsesOptions)
     payload: dict[str, object] = {
         "model": model.id,
-        "store": False,
+        "store": resolved_options.store if resolved_options and resolved_options.store is not None else False,
         "stream": True,
         "instructions": context.system_prompt,
         "input": convert_responses_messages(
@@ -224,6 +221,14 @@ def build_openai_codex_responses_payload(
     }
     if resolved_options and resolved_options.temperature is not None:
         payload["temperature"] = resolved_options.temperature
+    if resolved_options and resolved_options.top_p is not None:
+        payload["top_p"] = resolved_options.top_p
+    if resolved_options and resolved_options.text_format is not None:
+        text = payload["text"]
+        assert isinstance(text, dict)
+        text["format"] = resolved_options.text_format
+    if resolved_options and resolved_options.metadata is not None:
+        payload["metadata"] = resolved_options.metadata
     if resolved_options and resolved_options.service_tier is not None:
         payload["service_tier"] = resolved_options.service_tier
     if context.tools:

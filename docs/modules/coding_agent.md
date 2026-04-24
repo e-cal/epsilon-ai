@@ -4,6 +4,13 @@ Epsilon AI Framework module corresponding to the upstream `pi-mono/packages/codi
 
 Current status: package scaffolding only.
 
+## Intended Deviations
+
+- The long-term goal is behavior parity with `pi-mono/packages/coding-agent`, but the Python package layout and internal composition may diverge where that produces a cleaner fit with `epsilon.agent`, `epsilon.llm`, and Python CLI conventions
+- Interactive/TUI-facing pieces are expected to diverge more than the core harness logic
+
+No concrete user-facing deviations are locked in yet beyond those structural expectations.
+
 ## Next step: scaffolding
 
 The next milestone is to stand up the package with a minimum viable harness so it can drive the already-ported `epsilon.llm` and `epsilon.agent` layers.

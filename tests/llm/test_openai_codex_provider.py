@@ -6,21 +6,21 @@ from typing import cast
 import httpx
 import pytest
 
-from epsilon.llm import Context, SimpleStreamOptions, Tool, UserMessage
+from epsilon.llm import Context, StreamOptions, Tool, UserMessage
 from epsilon.llm.models import get_model
 from epsilon.llm.providers.openai_codex_responses import (
     OpenAICodexResponsesOptions,
+    _resolve_openai_codex_responses_options,
     build_openai_codex_responses_payload,
     clamp_openai_codex_reasoning_effort,
     normalize_openai_codex_status,
     parse_openai_codex_error_response,
     resolve_openai_codex_url,
-    stream_simple_openai_codex_responses,
 )
 
 
 def test_build_openai_codex_responses_payload_uses_instructions_and_null_strict() -> None:
-    model = get_model("openai-codex", "gpt-5.3-codex")
+    model = get_model("codex", "gpt-5.3-codex")
     context = Context(
         system_prompt="You are helpful.",
         messages=[UserMessage(content="hello", timestamp=1)],
@@ -37,15 +37,22 @@ def test_build_openai_codex_responses_payload_uses_instructions_and_null_strict(
         model,
         context,
         OpenAICodexResponsesOptions(
+            metadata={"purpose": "test"},
             session_id="session-1",
+            store=True,
             reasoning_effort="minimal",
+            text_format={"type": "text"},
             text_verbosity="high",
+            top_p=0.75,
         ),
     )
 
     assert payload["instructions"] == "You are helpful."
     assert payload["prompt_cache_key"] == "session-1"
-    assert payload["text"] == {"verbosity": "high"}
+    assert payload["metadata"] == {"purpose": "test"}
+    assert payload["store"] is True
+    assert payload["text"] == {"verbosity": "high", "format": {"type": "text"}}
+    assert payload["top_p"] == 0.75
     assert payload["reasoning"] == {"effort": "low", "summary": "auto"}
     assert payload["tools"] == [
         {
@@ -96,32 +103,26 @@ def test_parse_openai_codex_error_response_formats_usage_limit_message() -> None
     assert friendly == "You have hit your ChatGPT usage limit (plus plan)."
 
 
-def test_stream_simple_openai_codex_responses_builds_provider_options(monkeypatch) -> None:
-    captured: dict[str, object] = {}
-
-    def fake_stream_openai_codex_responses(model, context, options=None):
-        captured["model"] = model
-        captured["context"] = context
-        captured["options"] = options
-        return object()
-
-    monkeypatch.setattr(
-        "epsilon.llm.providers.openai_codex_responses.stream_openai_codex_responses",
-        fake_stream_openai_codex_responses,
-    )
-
-    model = get_model("openai-codex", "gpt-5.1")
-    context = Context(messages=[UserMessage(content="hello", timestamp=1)])
-
-    stream_simple_openai_codex_responses(
+def test_stream_openai_codex_responses_maps_plain_stream_options_to_provider_options() -> None:
+    model = get_model("codex", "gpt-5.3-codex")
+    options = _resolve_openai_codex_responses_options(
         model,
-        context,
-        SimpleStreamOptions(api_key="token"),
+        StreamOptions(api_key="token", reasoning="max"),
     )
-
-    options = captured["options"]
     assert isinstance(options, OpenAICodexResponsesOptions)
     assert options.api_key == "token"
+    assert options.reasoning_effort == "xhigh"
+
+
+def test_stream_openai_codex_responses_accepts_xhigh_reasoning_alias() -> None:
+    model = get_model("codex", "gpt-5.3-codex")
+    options = _resolve_openai_codex_responses_options(
+        model,
+        StreamOptions(api_key="token", reasoning="xhigh"),
+    )
+    assert isinstance(options, OpenAICodexResponsesOptions)
+    assert options.api_key == "token"
+    assert options.reasoning_effort == "xhigh"
 
 
 @pytest.mark.asyncio

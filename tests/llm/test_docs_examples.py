@@ -94,12 +94,12 @@ def test_llm_quickstart_example_runs_as_documented(monkeypatch, capsys) -> None:
         lambda _model, _context, _options=None: FakeStream(stream_events, final_message),
     )
 
-    async def fake_complete(
+    async def fake_complete_async(
         _model: object, _context: Context, _options: object | None = None
     ) -> AssistantMessage:
         return continuation
 
-    monkeypatch.setattr(llm, "complete", fake_complete)
+    monkeypatch.setattr(llm, "complete_async", fake_complete_async)
 
     namespace: dict[str, Any] = {}
     exec(block, namespace)
@@ -124,8 +124,7 @@ def test_llm_tool_definition_example_runs_as_documented() -> None:
 def test_llm_reasoning_example_runs_as_documented(monkeypatch) -> None:
     block = _block_starting_with(
         DOCS_LLM_PATH,
-        "import asyncio\n\n"
-        "from epsilon.llm import Context, SimpleStreamOptions, complete_simple, get_model",
+        "from epsilon.llm import Context, StreamOptions, complete, get_model",
     )
     model = llm.get_model("anthropic", "claude-sonnet-4-5")
     response = AssistantMessage(
@@ -140,12 +139,12 @@ def test_llm_reasoning_example_runs_as_documented(monkeypatch) -> None:
 
     monkeypatch.setattr(llm, "get_model", lambda provider, model_id: model)
 
-    async def fake_complete_simple(
+    def fake_complete(
         _model: object, _context: Context, _options: object | None = None
     ) -> AssistantMessage:
         return response
 
-    monkeypatch.setattr(llm, "complete_simple", fake_complete_simple)
+    monkeypatch.setattr(llm, "complete", fake_complete)
 
     namespace: dict[str, Any] = {}
     exec(block, namespace)
@@ -165,6 +164,10 @@ def test_llm_models_and_providers_example_runs_as_documented() -> None:
     assert "openai" in providers
     assert any(candidate.id == "gpt-5-mini" for candidate in openai_models)
     assert model.id == "gpt-5-mini"
+
+
+def test_llm_reasoning_levels_runtime_export_is_easy_to_use() -> None:
+    assert llm.REASONING_LEVELS == ("none", "minimal", "low", "medium", "high", "max", "xhigh")
 
 
 def test_llm_faux_provider_example_runs_as_documented() -> None:

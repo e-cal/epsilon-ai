@@ -3,21 +3,15 @@ from __future__ import annotations
 from typing import cast
 
 from ..api_registry import ApiProvider, clear_api_providers, register_api_provider
-from .anthropic import AnthropicOptions, stream_anthropic, stream_simple_anthropic
-from .azure_openai_responses import (
-    AzureOpenAIResponsesOptions,
-    stream_azure_openai_responses,
-    stream_simple_azure_openai_responses,
-)
+from .anthropic import AnthropicOptions, stream_anthropic
+from .foundry import FoundryOptions, stream_foundry
 from .openai_codex_responses import (
     OpenAICodexResponsesOptions,
     stream_openai_codex_responses,
-    stream_simple_openai_codex_responses,
 )
 from .openai_responses import (
     OpenAIResponsesOptions,
     stream_openai_responses,
-    stream_simple_openai_responses,
 )
 
 
@@ -30,11 +24,6 @@ def register_built_in_api_providers() -> None:
                 context,
                 cast(AnthropicOptions | None, options),
             ),
-            stream_simple=lambda model, context, options=None: stream_simple_anthropic(
-                model,
-                context,
-                options,
-            ),
         )
     )
     register_api_provider(
@@ -45,25 +34,15 @@ def register_built_in_api_providers() -> None:
                 context,
                 cast(OpenAIResponsesOptions | None, options),
             ),
-            stream_simple=lambda model, context, options=None: stream_simple_openai_responses(
-                model,
-                context,
-                options,
-            ),
         )
     )
     register_api_provider(
         ApiProvider(
-            api="azure-openai-responses",
-            stream=lambda model, context, options=None: stream_azure_openai_responses(
+            api="foundry",
+            stream=lambda model, context, options=None: stream_foundry(
                 model,
                 context,
-                cast(AzureOpenAIResponsesOptions | None, options),
-            ),
-            stream_simple=lambda model, context, options=None: stream_simple_azure_openai_responses(
-                model,
-                context,
-                options,
+                cast(FoundryOptions | None, options),
             ),
         )
     )
@@ -74,11 +53,6 @@ def register_built_in_api_providers() -> None:
                 model,
                 context,
                 cast(OpenAICodexResponsesOptions | None, options),
-            ),
-            stream_simple=lambda model, context, options=None: stream_simple_openai_codex_responses(
-                model,
-                context,
-                options,
             ),
         )
     )

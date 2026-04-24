@@ -5,6 +5,10 @@ from copy import deepcopy
 from .model_catalog import BUILTIN_MODELS
 from .types import Cost, Model, Provider, Usage
 
+_PROVIDER_ALIASES: dict[Provider, Provider] = {
+    "codex": "openai-codex",
+}
+
 _PROVIDER_MODELS: dict[Provider, dict[str, Model]] = {
     provider: {model_id: deepcopy(model) for model_id, model in models.items()}
     for provider, models in BUILTIN_MODELS.items()
@@ -13,11 +17,11 @@ _PROVIDER_MODELS: dict[Provider, dict[str, Model]] = {
 
 def register_models(*models: Model) -> None:
     for model in models:
-        _PROVIDER_MODELS.setdefault(model.provider, {})[model.id] = model
+        _PROVIDER_MODELS.setdefault(_normalize_provider(model.provider), {})[model.id] = model
 
 
 def unregister_provider_models(provider: Provider) -> None:
-    _PROVIDER_MODELS.pop(provider, None)
+    _PROVIDER_MODELS.pop(_normalize_provider(provider), None)
 
 
 def clear_models() -> None:
@@ -37,10 +41,14 @@ def get_providers() -> list[Provider]:
 
 
 def get_models(provider: Provider) -> list[Model]:
-    return sorted(_PROVIDER_MODELS.get(provider, {}).values(), key=lambda model: model.id)
+    return sorted(
+        _PROVIDER_MODELS.get(_normalize_provider(provider), {}).values(),
+        key=lambda model: model.id,
+    )
 
 
 def get_model(provider: Provider, model_id: str) -> Model:
+    provider = _normalize_provider(provider)
     try:
         return _PROVIDER_MODELS[provider][model_id]
     except KeyError as exc:
@@ -79,7 +87,21 @@ def supports_xhigh(model: Model) -> bool:
     )
 
 
+def supports_none(model: Model) -> bool:
+    return not model.reasoning or model.id not in _REASONING_NONE_UNSUPPORTED_MODEL_IDS
+
+
 def models_are_equal(a: Model | None, b: Model | None) -> bool:
     if a is None or b is None:
         return False
     return a.id == b.id and a.provider == b.provider
+
+
+def _normalize_provider(provider: Provider) -> Provider:
+    return _PROVIDER_ALIASES.get(provider, provider)
+
+
+_REASONING_NONE_UNSUPPORTED_MODEL_IDS = {
+    "gpt-5-mini",
+    "gpt-5-nano",
+}

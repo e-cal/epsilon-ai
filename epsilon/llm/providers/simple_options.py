@@ -3,12 +3,12 @@ from __future__ import annotations
 from dataclasses import fields
 from typing import Any, cast
 
-from ..types import Model, SimpleStreamOptions, StreamOptions, ThinkingLevel
+from ..types import Model, ReasoningLevel, StreamOptions, resolve_reasoning_level
 
 
 def build_base_options(
     model: Model,
-    options: SimpleStreamOptions | None = None,
+    options: StreamOptions | None = None,
     api_key: str | None = None,
 ) -> StreamOptions:
     max_tokens = min(model.max_tokens, 32_000)
@@ -17,6 +17,7 @@ def build_base_options(
 
     return StreamOptions(
         temperature=options.temperature if options else None,
+        top_p=options.top_p if options else None,
         max_tokens=max_tokens,
         signal=options.signal if options else None,
         api_key=api_key or (options.api_key if options else None),
@@ -26,6 +27,9 @@ def build_base_options(
         on_payload=options.on_payload if options else None,
         max_retry_delay_ms=options.max_retry_delay_ms if options else None,
         metadata=options.metadata if options else None,
+        text_verbosity=options.text_verbosity if options else None,
+        text_format=options.text_format if options else None,
+        store=options.store if options else None,
     )
 
 
@@ -53,17 +57,18 @@ def coerce_stream_options[StreamOptionsT: StreamOptions](
     return cast(StreamOptionsT, target_type(**stream_options_to_kwargs(options, target_type)))
 
 
-def clamp_reasoning(effort: ThinkingLevel | None) -> ThinkingLevel | None:
-    if effort == "xhigh":
+def clamp_reasoning(effort: ReasoningLevel | None) -> str | None:
+    resolved = resolve_reasoning_level(effort)
+    if resolved == "xhigh":
         return "high"
-    return effort
+    return resolved
 
 
 def adjust_max_tokens_for_thinking(
     base_max_tokens: int,
     model_max_tokens: int,
-    reasoning_level: ThinkingLevel,
-    custom_budgets: dict[ThinkingLevel, int] | None = None,
+    reasoning_level: ReasoningLevel,
+    custom_budgets: dict[ReasoningLevel, int] | None = None,
 ) -> tuple[int, int]:
     budgets: dict[str, int] = {
         "minimal": 1_024,

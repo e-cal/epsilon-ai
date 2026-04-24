@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import cast
 
 from epsilon.llm import Context, ImageContent, TextContent, Tool, ToolResultMessage, UserMessage
 from epsilon.llm.models import get_model
 from epsilon.llm.providers.anthropic import AnthropicOptions, build_anthropic_payload
-from epsilon.llm.providers.azure_openai_responses import (
-    AzureOpenAIResponsesOptions,
-    parse_deployment_name_map,
-    resolve_deployment_name,
+from epsilon.llm.providers.foundry import (
+    FoundryOptions,
+    parse_foundry_deployment_name_map,
+    resolve_foundry_deployment_name,
+    resolve_foundry_endpoint,
 )
 from epsilon.llm.providers.openai_responses import (
     OpenAIResponsesOptions,
@@ -45,6 +47,28 @@ def test_openai_responses_payload_includes_reasoning_and_tools() -> None:
     input_items = payload["input"]
     assert isinstance(input_items, list)
     assert input_items[0]["role"] == "developer"
+
+
+def test_openai_responses_payload_includes_text_verbosity() -> None:
+    model = get_model("openai", "gpt-5-mini")
+    context = Context(messages=[UserMessage(content="hello", timestamp=1)])
+
+    payload = build_openai_responses_payload(
+        model,
+        context,
+        OpenAIResponsesOptions(
+            metadata={"purpose": "test"},
+            store=True,
+            text_format={"type": "json_object"},
+            text_verbosity="high",
+            top_p=0.25,
+        ),
+    )
+
+    assert payload["metadata"] == {"purpose": "test"}
+    assert payload["store"] is True
+    assert payload["text"] == {"verbosity": "high", "format": {"type": "json_object"}}
+    assert payload["top_p"] == 0.25
 
 
 def test_openai_responses_payload_keeps_tool_result_images_in_function_call_output() -> None:
@@ -118,18 +142,42 @@ def test_anthropic_payload_groups_tool_results_and_applies_cache_control() -> No
     assert content[0]["cache_control"] == {"type": "ephemeral"}
 
 
-def test_azure_deployment_name_map_prefers_explicit_override() -> None:
-    model = get_model("azure-openai-responses", "gpt-4o-mini")
+def test_foundry_deployment_name_map_prefers_explicit_override() -> None:
+    model = get_model("foundry", "gpt-4o-mini")
 
-    mapping = parse_deployment_name_map("gpt-4o-mini=prod-mini,gpt-5-mini=prod-five")
+    mapping = parse_foundry_deployment_name_map("gpt-4o-mini=prod-mini,gpt-5-mini=prod-five")
 
     assert mapping["gpt-4o-mini"] == "prod-mini"
     assert (
-        resolve_deployment_name(
+        resolve_foundry_deployment_name(
             model,
-            options=AzureOpenAIResponsesOptions(azure_deployment_name="custom-deploy"),
+            options=FoundryOptions(foundry_deployment_name="custom-deploy"),
         )
         == "custom-deploy"
+    )
+
+
+def test_foundry_endpoint_infers_claude_models_as_anthropic() -> None:
+    claude_model = get_model("foundry", "claude-sonnet-4-6")
+    gpt_model = get_model("foundry", "gpt-4o-mini")
+
+    assert resolve_foundry_endpoint(claude_model) == "anthropic"
+    assert resolve_foundry_endpoint(gpt_model) == "openai"
+
+
+def test_foundry_endpoint_uses_explicit_anthropic_base_url_for_custom_deployments() -> None:
+    model = replace(get_model("foundry", "gpt-4o-mini"), id="custom-anthropic-deployment")
+
+    assert (
+        resolve_foundry_endpoint(
+            model,
+            FoundryOptions(
+                foundry_anthropic_base_url=(
+                    "https://epsilon-foundry.services.ai.azure.com/anthropic/v1/messages"
+                )
+            ),
+        )
+        == "anthropic"
     )
 
 

@@ -11,6 +11,7 @@ from epsilon.llm import (
     TextContent,
     UserMessage,
     complete,
+    complete_async,
     faux_assistant_message,
     faux_text,
     faux_thinking,
@@ -83,14 +84,14 @@ async def test_faux_provider_estimates_usage_and_session_cache() -> None:
     )
 
     options = StreamOptions(session_id="s1", cache_retention="short")
-    first = await complete(model, context, options)
+    first = await complete_async(model, context, options)
     assert first.usage.cache_read == 0
     assert first.usage.cache_write > 0
 
     context.messages.append(first)
     context.messages.append(UserMessage(content="follow up", timestamp=2))
 
-    second = await complete(model, context, options)
+    second = await complete_async(model, context, options)
     assert second.usage.cache_read > 0
     assert second.usage.total_tokens == (
         second.usage.input
@@ -121,11 +122,11 @@ async def test_faux_provider_supports_async_factories_and_multiple_models() -> N
         ]
     )
 
-    fast = await complete(
+    fast = await complete_async(
         registration.get_model("faux-fast"),
         Context(messages=[UserMessage(content="hi", timestamp=1)]),
     )
-    thinker = await complete(
+    thinker = await complete_async(
         registration.get_model("faux-thinker"),
         Context(messages=[UserMessage(content="hi", timestamp=1)]),
     )
@@ -189,9 +190,30 @@ async def test_faux_provider_explicit_error_is_terminal_error() -> None:
 @pytest.mark.asyncio
 async def test_faux_provider_errors_when_queue_is_empty() -> None:
     registration = register_faux_provider()
-    message = await complete(registration.get_model(), Context(messages=[]))
+    message = await complete_async(registration.get_model(), Context(messages=[]))
 
     assert message.stop_reason == "error"
     assert message.error_message == "No more faux responses queued"
+
+    registration.unregister()
+
+
+def test_faux_provider_complete_runs_synchronously() -> None:
+    registration = register_faux_provider()
+    registration.set_responses([faux_assistant_message("hello")])
+
+    message = complete(registration.get_model(), Context(messages=[]))
+
+    assert cast(TextContent, message.content[0]).text == "hello"
+
+    registration.unregister()
+
+
+@pytest.mark.asyncio
+async def test_faux_provider_complete_requires_complete_async_inside_event_loop() -> None:
+    registration = register_faux_provider()
+
+    with pytest.raises(RuntimeError, match="complete_async"):
+        complete(registration.get_model(), Context(messages=[]))
 
     registration.unregister()

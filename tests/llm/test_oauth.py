@@ -32,10 +32,11 @@ def _base64url(value: str) -> str:
 
 
 def test_openai_codex_oauth_provider_is_registered() -> None:
-    provider = get_oauth_provider("openai-codex")
+    provider = get_oauth_provider("codex")
 
     assert provider is not None
     assert provider.name == openai_codex_oauth_provider.name
+    assert get_oauth_provider("openai-codex") is provider
 
 
 def test_parse_openai_codex_authorization_input_accepts_urls_and_manual_values() -> None:
@@ -115,7 +116,10 @@ async def test_login_openai_codex_uses_browser_callback_when_available(monkeypat
 
     monkeypatch.setattr("epsilon.llm.oauth._create_openai_codex_authorization_flow", fake_flow)
     monkeypatch.setattr("epsilon.llm.oauth._start_openai_codex_oauth_server", fake_start_server)
-    monkeypatch.setattr("epsilon.llm.oauth._exchange_openai_codex_authorization_code", fake_exchange)
+    monkeypatch.setattr(
+        "epsilon.llm.oauth._exchange_openai_codex_authorization_code",
+        fake_exchange,
+    )
 
     async def fail_prompt(prompt) -> str:
         pytest.fail(f"unexpected prompt: {prompt.message}")
@@ -164,7 +168,10 @@ async def test_login_openai_codex_falls_back_to_manual_prompt(monkeypatch) -> No
 
     monkeypatch.setattr("epsilon.llm.oauth._create_openai_codex_authorization_flow", fake_flow)
     monkeypatch.setattr("epsilon.llm.oauth._start_openai_codex_oauth_server", fake_start_server)
-    monkeypatch.setattr("epsilon.llm.oauth._exchange_openai_codex_authorization_code", fake_exchange)
+    monkeypatch.setattr(
+        "epsilon.llm.oauth._exchange_openai_codex_authorization_code",
+        fake_exchange,
+    )
 
     credentials = await login_openai_codex(
         on_auth=lambda info: None,

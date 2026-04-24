@@ -9,12 +9,13 @@ from pathlib import Path
 
 UPSTREAM_MODEL_CATALOG = Path("/Users/ecal/projects/pi-mono/packages/ai/src/models.generated.ts")
 DEFAULT_OUTPUT = Path("/Users/ecal/projects/epsilon-ai/epsilon/llm/model_catalog.py")
-PROVIDERS = (
+UPSTREAM_PROVIDERS = (
     "anthropic",
     "azure-openai-responses",
     "openai-codex",
     "openai",
 )
+PROVIDER_ALIASES: dict[str, str] = {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,7 +68,7 @@ def _extract_braced_block(text: str, brace_index: int) -> tuple[str, int]:
         if char == "}":
             depth -= 1
             if depth == 0:
-                return text[brace_index: index + 1], index + 1
+                return text[brace_index : index + 1], index + 1
 
     raise ValueError("Unterminated braced block")
 
@@ -129,17 +130,39 @@ def _parse_cost(body: str) -> CostSpec:
 
 
 def _parse_model_block(body: str) -> ModelSpec:
+    provider = _parse_string_field("provider", body)
     return ModelSpec(
         id=_parse_string_field("id", body),
         name=_parse_string_field("name", body),
         api=_parse_string_field("api", body),
-        provider=_parse_string_field("provider", body),
+        provider=PROVIDER_ALIASES.get(provider, provider),
         base_url=_parse_string_field("baseUrl", body),
         reasoning=_parse_bool_field("reasoning", body),
         input_modalities=_parse_input_modalities(body),
         cost=_parse_cost(body),
         context_window=_parse_number_field("contextWindow", body),
         max_tokens=_parse_number_field("maxTokens", body),
+    )
+
+
+def _replace_model_provider(
+    model: ModelSpec,
+    *,
+    api: str,
+    provider: str,
+    base_url: str,
+) -> ModelSpec:
+    return ModelSpec(
+        id=model.id,
+        name=model.name,
+        api=api,
+        provider=provider,
+        base_url=base_url,
+        reasoning=model.reasoning,
+        input_modalities=model.input_modalities,
+        cost=model.cost,
+        context_window=model.context_window,
+        max_tokens=model.max_tokens,
     )
 
 
@@ -162,7 +185,33 @@ def _parse_provider_models(source: str, provider: str) -> dict[str, ModelSpec]:
 
 def load_upstream_models(source_path: Path) -> dict[str, dict[str, ModelSpec]]:
     source = source_path.read_text()
-    return {provider: _parse_provider_models(source, provider) for provider in PROVIDERS}
+    upstream = {
+        PROVIDER_ALIASES.get(provider, provider): _parse_provider_models(source, provider)
+        for provider in UPSTREAM_PROVIDERS
+    }
+
+    foundry_models = {
+        model_id: _replace_model_provider(model, api="foundry", provider="foundry", base_url="")
+        for model_id, model in upstream["azure-openai-responses"].items()
+    }
+    foundry_models.update(
+        {
+            model_id: _replace_model_provider(
+                model,
+                api="foundry",
+                provider="foundry",
+                base_url="",
+            )
+            for model_id, model in upstream["anthropic"].items()
+        }
+    )
+
+    return {
+        "anthropic": upstream["anthropic"],
+        "foundry": foundry_models,
+        "openai": upstream["openai"],
+        "openai-codex": upstream["openai-codex"],
+    }
 
 
 def _render_model(model: ModelSpec) -> str:

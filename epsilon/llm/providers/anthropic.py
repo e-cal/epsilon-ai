@@ -4,7 +4,7 @@ import json
 import os
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 import httpx
 
@@ -24,7 +24,7 @@ from ..types import (
     JSONObject,
     Message,
     Model,
-    SimpleStreamOptions,
+    ReasoningLevel,
     StartEvent,
     StopReason,
     StreamOptions,
@@ -35,7 +35,6 @@ from ..types import (
     ThinkingContent,
     ThinkingDeltaEvent,
     ThinkingEndEvent,
-    ThinkingLevel,
     ThinkingStartEvent,
     Tool,
     ToolCall,
@@ -43,6 +42,7 @@ from ..types import (
     ToolCallEndEvent,
     ToolCallStartEvent,
     ToolResultMessage,
+    resolve_reasoning_level,
 )
 from .shared import create_empty_assistant_message, start_background_task
 from .simple_options import (
@@ -104,7 +104,7 @@ def stream_anthropic(
     context: Context,
     options: AnthropicOptions | StreamOptions | None = None,
 ):
-    resolved_options = coerce_stream_options(options, AnthropicOptions)
+    resolved_options = _resolve_anthropic_options(model, options)
     stream = create_assistant_message_event_stream()
     start_background_task(_run_anthropic(stream, model, context, resolved_options))
     return stream
@@ -166,7 +166,7 @@ async def _run_anthropic(
         stream.end(output)
     except Exception as exc:
         output.stop_reason = "aborted" if _is_abort_error(exc, options) else "error"
-        output.error_message = str(exc)
+        output.error_message = await _format_anthropic_error(exc, model)
         stream.push(
             ErrorEvent(
                 reason=cast(Literal["aborted", "error"], output.stop_reason),
@@ -176,54 +176,125 @@ async def _run_anthropic(
         stream.end(output)
 
 
-def stream_simple_anthropic(
+def _resolve_anthropic_options(
     model: Model,
-    context: Context,
-    options: SimpleStreamOptions | None = None,
-):
-    api_key = options.api_key if options else None
-    api_key = api_key or get_env_api_key(model.provider)
-    if not api_key:
-        raise ValueError(f"No API key for provider: {model.provider}")
+    options: AnthropicOptions | StreamOptions | None,
+) -> AnthropicOptions | None:
+    if options is None:
+        return None
+    if isinstance(options, AnthropicOptions):
+        return options
+    if type(options) is not StreamOptions:
+        return coerce_stream_options(options, AnthropicOptions)
 
-    base = build_base_options(model, options, api_key)
-    if not options or not options.reasoning:
-        return stream_anthropic(
-            model,
-            context,
-            AnthropicOptions(
-                **stream_options_to_kwargs(base, AnthropicOptions),
-                thinking_enabled=False,
-            ),
+    base = build_base_options(model, options, options.api_key)
+    reasoning_level = resolve_reasoning_level(options.reasoning)
+    if reasoning_level is None:
+        return AnthropicOptions(
+            **stream_options_to_kwargs(base, AnthropicOptions),
+            thinking_enabled=False,
         )
 
     if supports_adaptive_thinking(model.id):
-        return stream_anthropic(
-            model,
-            context,
-            AnthropicOptions(
-                **stream_options_to_kwargs(base, AnthropicOptions),
-                thinking_enabled=True,
-                effort=map_thinking_level_to_effort(options.reasoning, model.id),
-            ),
+        return AnthropicOptions(
+            **stream_options_to_kwargs(base, AnthropicOptions),
+            thinking_enabled=True,
+            effort=map_thinking_level_to_effort(reasoning_level, model.id),
         )
 
     max_tokens, thinking_budget = adjust_max_tokens_for_thinking(
         base.max_tokens or 0,
         model.max_tokens,
-        options.reasoning,
+        cast(ReasoningLevel, options.reasoning),
         options.thinking_budgets,
     )
-    return stream_anthropic(
-        model,
-        context,
-        AnthropicOptions(
-            **stream_options_to_kwargs(base, AnthropicOptions),
-            max_tokens=max_tokens,
-            thinking_enabled=True,
-            thinking_budget_tokens=thinking_budget,
-        ),
+    anthropic_kwargs = stream_options_to_kwargs(base, AnthropicOptions)
+    anthropic_kwargs["max_tokens"] = max_tokens
+    return AnthropicOptions(
+        **anthropic_kwargs,
+        thinking_enabled=True,
+        thinking_budget_tokens=thinking_budget,
     )
+
+
+async def _format_anthropic_error(exc: Exception, model: Model) -> str:
+    if not isinstance(exc, httpx.HTTPStatusError):
+        return str(exc)
+
+    response = exc.response
+    detail = await _extract_anthropic_error_detail(response)
+    if model.provider == "foundry" and _is_foundry_deployment_not_found(response):
+        deployment = model.id
+        response_text = (await _read_httpx_response_text(response)).strip()
+        return (
+            f"Foundry deployment not found for foundry/{deployment}. "
+            f"Deploy that model in Foundry or map it with FOUNDRY_DEPLOYMENT_NAME_MAP. "
+            f"Response body: {detail or response_text or str(exc)}"
+        )
+    if detail:
+        return f"{exc}. Response body: {detail}"
+    return str(exc)
+
+
+async def _extract_anthropic_error_detail(response: httpx.Response) -> str | None:
+    text = await _read_httpx_response_text(response)
+    text = text.strip()
+    if not text:
+        return None
+
+    try:
+        payload = response.json()
+    except json.JSONDecodeError:
+        return text
+
+    if not isinstance(payload, dict):
+        return text
+
+    error = payload.get("error")
+    if not isinstance(error, dict):
+        return text
+
+    message = error.get("message")
+    code = error.get("code")
+    details = error.get("details")
+
+    parts: list[str] = []
+    if isinstance(message, str) and message:
+        parts.append(message)
+    if isinstance(code, str) and code:
+        parts.append(f"code={code}")
+    if isinstance(details, str) and details and details != message:
+        parts.append(details)
+    if parts:
+        return "; ".join(parts)
+
+    return _compact_json(payload)
+
+
+def _is_foundry_deployment_not_found(response: httpx.Response) -> bool:
+    try:
+        payload = response.json()
+    except json.JSONDecodeError:
+        return False
+
+    if not isinstance(payload, dict):
+        return False
+    error = payload.get("error")
+    if not isinstance(error, dict):
+        return False
+    return error.get("code") == "DeploymentNotFound"
+
+
+def _compact_json(payload: Any) -> str:
+    return json.dumps(payload, separators=(",", ":"), sort_keys=True)
+
+
+async def _read_httpx_response_text(response: httpx.Response) -> str:
+    try:
+        return response.text
+    except httpx.ResponseNotRead:
+        await response.aread()
+        return response.text
 
 
 def build_anthropic_payload(
@@ -781,8 +852,8 @@ def supports_adaptive_thinking(model_id: str) -> bool:
     )
 
 
-def map_thinking_level_to_effort(level: ThinkingLevel, model_id: str) -> AnthropicEffort:
-    """Map ThinkingLevel to Anthropic effort levels for adaptive thinking.
+def map_thinking_level_to_effort(level: str, model_id: str) -> AnthropicEffort:
+    """Map normalized reasoning levels to Anthropic effort levels for adaptive thinking.
 
     Note: effort "max" is only valid on Opus 4.6, while Opus 4.7 supports "xhigh".
     """

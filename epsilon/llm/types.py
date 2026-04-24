@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 if TYPE_CHECKING:
     from .event_stream import AssistantMessageEventStream
@@ -14,6 +14,7 @@ type KnownApi = Literal[
     "openai-completions",
     "mistral-conversations",
     "openai-responses",
+    "foundry",
     "azure-openai-responses",
     "openai-codex-responses",
     "anthropic-messages",
@@ -30,7 +31,9 @@ type KnownProvider = Literal[
     "google-antigravity",
     "google-vertex",
     "openai",
+    "foundry",
     "azure-openai-responses",
+    "codex",
     "openai-codex",
     "github-copilot",
     "xai",
@@ -47,7 +50,9 @@ type KnownProvider = Literal[
     "opencode-go",
     "kimi-coding",
 ]
-type ThinkingLevel = Literal["minimal", "low", "medium", "high", "xhigh"]
+REASONING_LEVELS = ("none", "minimal", "low", "medium", "high", "max", "xhigh")
+type ReasoningLevel = Literal["none", "minimal", "low", "medium", "high", "max", "xhigh"]
+type ProviderReasoningLevel = Literal["minimal", "low", "medium", "high", "xhigh"]
 type CacheRetention = Literal["none", "short", "long"]
 type Transport = Literal["sse", "websocket", "auto"]
 type StopReason = Literal["stop", "length", "toolUse", "error", "aborted"]
@@ -61,7 +66,7 @@ class OpenAICompletionsCompat:
     supports_store: bool | None = None
     supports_developer_role: bool | None = None
     supports_reasoning_effort: bool | None = None
-    reasoning_effort_map: dict[ThinkingLevel, str] | None = None
+    reasoning_effort_map: dict[ReasoningLevel, str] | None = None
     supports_usage_in_streaming: bool | None = None
     max_tokens_field: Literal["max_completion_tokens", "max_tokens"] | None = None
     requires_tool_result_name: bool | None = None
@@ -119,6 +124,7 @@ class Model:
 @dataclass(slots=True)
 class StreamOptions:
     temperature: float | None = None
+    top_p: float | None = None
     max_tokens: int | None = None
     signal: object | None = None
     api_key: str | None = None
@@ -129,15 +135,19 @@ class StreamOptions:
     headers: dict[str, str] | None = None
     max_retry_delay_ms: int | None = None
     metadata: JSONObject | None = None
+    reasoning: ReasoningLevel | None = None
+    thinking_budgets: dict[ReasoningLevel, int] | None = None
+    text_verbosity: Literal["low", "medium", "high"] | None = None
+    text_format: JSONObject | None = None
+    store: bool | None = None
 
 
-@dataclass(slots=True)
-class SimpleStreamOptions(StreamOptions):
-    reasoning: ThinkingLevel | None = None
-    thinking_budgets: dict[ThinkingLevel, int] | None = None
-
-
-type ProviderStreamOptions = StreamOptions
+def resolve_reasoning_level(level: ReasoningLevel | None) -> ProviderReasoningLevel | None:
+    if level in {None, "none"}:
+        return None
+    if level in {"max", "xhigh"}:
+        return "xhigh"
+    return cast(ProviderReasoningLevel, level)
 
 
 @dataclass(slots=True)
@@ -337,15 +347,3 @@ class StreamFunction(Protocol):
         context: Context,
         options: StreamOptions | None = None,
     ) -> AssistantMessageEventStream: ...
-
-
-class SimpleStreamFunction(Protocol):
-    def __call__(
-        self,
-        model: Model,
-        context: Context,
-        options: SimpleStreamOptions | None = None,
-    ) -> AssistantMessageEventStream: ...
-
-
-StreamSimpleFunction = SimpleStreamFunction

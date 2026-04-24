@@ -34,8 +34,8 @@ from .types import (
     MessageStartEvent,
     MessageUpdateEvent,
     QueueMode,
+    ReasoningLevel,
     StreamFn,
-    ThinkingLevel,
     ToolExecutionMode,
     TransformContextFn,
 )
@@ -59,7 +59,7 @@ class AgentState:
         initial = initial_state or AgentInitialState()
         self.system_prompt = initial.system_prompt
         self.model = deepcopy(initial.model) if initial.model is not None else _default_model()
-        self.thinking_level: ThinkingLevel = initial.thinking_level
+        self.thinking_level: ReasoningLevel = initial.thinking_level
         self._tools: list[AgentTool] = list(initial.tools)
         self._messages: list[AgentMessage] = list(initial.messages)
         self.is_streaming = False
@@ -131,7 +131,7 @@ class Agent:
         steering_mode: QueueMode = "one-at-a-time",
         follow_up_mode: QueueMode = "one-at-a-time",
         session_id: str | None = None,
-        thinking_budgets: dict[ThinkingLevel, int] | None = None,
+        thinking_budgets: dict[ReasoningLevel, int] | None = None,
         transport: Transport = "sse",
         max_retry_delay_ms: int | None = None,
         tool_execution: ToolExecutionMode = "parallel",

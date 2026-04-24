@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Literal, Protocol, cast, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 from ..llm.event_stream import AssistantMessageEventStream
 from ..llm.types import (
@@ -15,20 +15,23 @@ from ..llm.types import (
     JSONObject,
     Message,
     Model,
-    SimpleStreamOptions,
+    StreamOptions,
     TextContent,
     ToolCall,
     ToolResultMessage,
     Transport,
 )
 from ..llm.types import (
-    ThinkingLevel as LlmThinkingLevel,
+    ReasoningLevel as LlmReasoningLevel,
 )
 from ..llm.types import (
     Tool as LlmTool,
 )
+from ..llm.types import (
+    resolve_reasoning_level as resolve_llm_reasoning_level,
+)
 
-type ThinkingLevel = Literal["off", "minimal", "low", "medium", "high", "xhigh"]
+type ReasoningLevel = LlmReasoningLevel
 type ToolExecutionMode = Literal["sequential", "parallel"]
 type QueueMode = Literal["all", "one-at-a-time"]
 
@@ -60,7 +63,7 @@ class SupportsAgentMessage(Protocol):
 
 
 type AgentMessage = Message | SupportsAgentMessage
-type StreamFn = Callable[[Model, Context, SimpleStreamOptions | None], AssistantMessageEventStream]
+type StreamFn = Callable[[Model, Context, StreamOptions | None], AssistantMessageEventStream]
 type ConvertToLlmFn = Callable[[list[AgentMessage]], list[Message] | Awaitable[list[Message]]]
 type TransformContextFn = Callable[
     [list[AgentMessage], AbortSignal | None],
@@ -166,15 +169,15 @@ class AgentLoopConfig:
     headers: dict[str, str] | None = None
     max_retry_delay_ms: int | None = None
     metadata: JSONObject | None = None
-    reasoning: ThinkingLevel | None = None
-    thinking_budgets: dict[ThinkingLevel, int] | None = None
+    reasoning: ReasoningLevel | None = None
+    thinking_budgets: dict[ReasoningLevel, int] | None = None
 
 
 @dataclass(slots=True)
 class AgentInitialState:
     system_prompt: str = ""
     model: Model | None = None
-    thinking_level: ThinkingLevel = "off"
+    thinking_level: ReasoningLevel = "none"
     tools: list[AgentTool] = field(default_factory=list)
     messages: list[AgentMessage] = field(default_factory=list)
 
@@ -261,7 +264,5 @@ type AgentEvent = (
 )
 
 
-def normalize_reasoning_level(value: ThinkingLevel | None) -> LlmThinkingLevel | None:
-    if value in {None, "off"}:
-        return None
-    return cast(LlmThinkingLevel, value)
+def normalize_reasoning_level(value: ReasoningLevel | None) -> LlmReasoningLevel | None:
+    return resolve_llm_reasoning_level(value)

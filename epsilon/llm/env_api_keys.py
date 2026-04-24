@@ -9,6 +9,9 @@ def get_env_api_key(provider: Provider) -> str | None:
     if provider == "anthropic":
         return os.environ.get("ANTHROPIC_OAUTH_TOKEN") or os.environ.get("ANTHROPIC_API_KEY")
 
+    if provider == "foundry":
+        return os.environ.get("FOUNDRY_API_KEY")
+
     if provider == "azure-openai-responses":
         return os.environ.get("AZURE_OPENAI_API_KEY")
 

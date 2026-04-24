@@ -23,8 +23,11 @@ TOKEN_URL = "https://auth.openai.com/oauth/token"
 REDIRECT_URI = "http://localhost:1455/auth/callback"
 SCOPE = "openid profile email offline_access"
 OPENAI_AUTH_CLAIM_PATH = "https://api.openai.com/auth"
-OPENAI_CODEX_PROVIDER_ID = "openai-codex"
+OPENAI_CODEX_PROVIDER_ID = "codex"
 DEFAULT_OPENAI_CODEX_ORIGINATOR = "epsilon"
+_OAUTH_PROVIDER_ALIASES: dict[str, str] = {
+    "openai-codex": OPENAI_CODEX_PROVIDER_ID,
+}
 
 
 type OAuthProviderId = str
@@ -554,7 +557,7 @@ _oauth_provider_registry: dict[str, OAuthProviderInterface] = {
 
 
 def get_oauth_provider(provider_id: OAuthProviderId) -> OAuthProviderInterface | None:
-    return _oauth_provider_registry.get(provider_id)
+    return _oauth_provider_registry.get(_normalize_oauth_provider_id(provider_id))
 
 
 def register_oauth_provider(provider: OAuthProviderInterface) -> None:
@@ -562,6 +565,7 @@ def register_oauth_provider(provider: OAuthProviderInterface) -> None:
 
 
 def unregister_oauth_provider(provider_id: OAuthProviderId) -> None:
+    provider_id = _normalize_oauth_provider_id(provider_id)
     built_in = next(
         (provider for provider in _BUILT_IN_OAUTH_PROVIDERS if provider.id == provider_id), None
     )
@@ -601,11 +605,14 @@ async def get_oauth_api_key(
     provider_id: OAuthProviderId,
     credentials: dict[str, OAuthCredentials],
 ) -> OAuthApiKeyResult | None:
-    provider = get_oauth_provider(provider_id)
+    normalized_provider_id = _normalize_oauth_provider_id(provider_id)
+    provider = get_oauth_provider(normalized_provider_id)
     if provider is None:
-        raise LookupError(f"Unknown OAuth provider: {provider_id}")
+        raise LookupError(f"Unknown OAuth provider: {normalized_provider_id}")
 
-    provider_credentials = credentials.get(provider_id)
+    provider_credentials = credentials.get(normalized_provider_id)
+    if provider_credentials is None and normalized_provider_id != provider_id:
+        provider_credentials = credentials.get(provider_id)
     if provider_credentials is None:
         return None
 
@@ -613,7 +620,9 @@ async def get_oauth_api_key(
         try:
             provider_credentials = await provider.refresh_token(provider_credentials)
         except Exception as exc:
-            raise RuntimeError(f"Failed to refresh OAuth token for {provider_id}") from exc
+            raise RuntimeError(
+                f"Failed to refresh OAuth token for {normalized_provider_id}"
+            ) from exc
 
     return OAuthApiKeyResult(
         new_credentials=provider_credentials,
@@ -623,6 +632,10 @@ async def get_oauth_api_key(
 
 def build_openai_codex_user_agent() -> str:
     return f"epsilon ({platform.system()} {platform.release()}; {platform.machine()})"
+
+
+def _normalize_oauth_provider_id(provider_id: OAuthProviderId) -> OAuthProviderId:
+    return _OAUTH_PROVIDER_ALIASES.get(provider_id, provider_id)
 
 
 def _first(values: list[str] | None) -> str | None:
