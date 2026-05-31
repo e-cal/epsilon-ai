@@ -4,21 +4,29 @@ This document captures early repository-level decisions for Epsilon AI Framework
 
 ## Repository layout
 
-The repository uses a single Python distribution with module boundaries that mirror the upstream package split where practical:
+The repository uses a single Python distribution with module boundaries that mirror the upstream package split where practical, with documented deliberate deviations:
 
 - `epsilon/llm/` → Python LLM client / provider layer
-- `epsilon/agent/` → Python agent framework
-- `epsilon/coding_agent/` → Python coding harness / CLI
-- `epsilon/tui/` → Python terminal UI support
+- `epsilon/harness/` → agent runtime + coding-agent harness + built-in tools
+- `epsilon/server/` → server hosting an `epsilon.harness` runtime (no upstream equivalent)
+- `epsilon/client/` → Python client for `epsilon.server` (no upstream equivalent)
+- `epsilon/tui/` → Python terminal UI (OpenTUI-based)
 
 Tests live under `tests/`, grouped by module.
 
 Python import module names:
 
 - `epsilon.llm`
-- `epsilon.agent`
-- `epsilon.coding_agent`
+- `epsilon.harness`
+- `epsilon.server`
+- `epsilon.client`
 - `epsilon.tui`
+
+## Intended deviations from upstream
+
+- Upstream `pi-mono/packages/agent` and `pi-mono/packages/coding-agent` are merged into a single `epsilon.harness` module.
+- The coding agent is server-first: `epsilon.server` is mandatory for all coding-agent usage, including standalone single-user invocations. There is no in-process coding-agent path; `epsilon.client` is the canonical consumption surface.
+- `epsilon.tui` is OpenTUI-based, modeled on `~/projects/opencode`, rather than tracking `pi-mono/packages/tui`.
 
 ## Tooling
 
@@ -58,6 +66,6 @@ Current baseline:
 - use plain Python dataclasses for internal state/models
 - use JSON Schema-compatible `dict` definitions for tool/input schemas when parity with upstream matters
 - use a lightweight runtime validator rather than a model framework as the primary abstraction
-- `epsilon.agent.validation` now provides the first concrete implementation of that approach for tool-argument validation
+- `epsilon.harness.validation` now provides the first concrete implementation of that approach for tool-argument validation
 
-Open follow-up: decide when to extract that validator into a shared cross-module utility instead of keeping it local to `epsilon.agent`.
+Open follow-up: decide when to extract that validator into a shared cross-module utility instead of keeping it local to `epsilon.harness`.

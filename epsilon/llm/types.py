@@ -234,6 +234,43 @@ class Context:
     system_prompt: str | None = None
     tools: list[Tool] | None = None
 
+    def __repr__(self) -> str:
+        lines: list[str] = []
+        if self.system_prompt is not None:
+            lines.append(f"System: {self.system_prompt}")
+
+        for message in self.messages:
+            if message.role == "user":
+                lines.append(f"User: {_format_content(message.content)}")
+            elif message.role == "assistant":
+                lines.append(f"Assistant: {_format_content(message.content)}")
+            else:
+                content = _format_content(message.content)
+                lines.append(f"Tool Result ({message.tool_name}): {content}")
+
+        for tool in self.tools or []:
+            lines.append(f"Tool ({tool.name}): {tool.description}")
+
+        return "\n".join(lines) if lines else "Context()"
+
+
+def _format_content(content: str | list[ContentBlock] | list[UserContentBlock]) -> str:
+    if isinstance(content, str):
+        return content
+
+    parts: list[str] = []
+    for block in content:
+        if block.type == "text":
+            parts.append(block.text)
+        elif block.type == "thinking":
+            parts.append(f"[thinking] {block.thinking}")
+        elif block.type == "toolCall":
+            parts.append(f"[tool call] {block.name}({block.arguments})")
+        else:
+            parts.append(f"[image] {block.mime_type}")
+
+    return "\n".join(parts)
+
 
 @dataclass(slots=True)
 class StartEvent:

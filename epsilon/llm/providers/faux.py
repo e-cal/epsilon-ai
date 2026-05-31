@@ -12,19 +12,18 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Literal, cast
 
-from .api_registry import ApiProvider, register_api_provider, unregister_api_provider
-from .event_stream import AssistantMessageEventStream, create_assistant_message_event_stream
-from .json_parse import parse_streaming_json
-from .models import register_models, unregister_provider_models
-from .providers.shared import start_background_task
-from .runtime import (
+from ..api_registry import ApiProvider, register_api_provider, unregister_api_provider
+from ..event_stream import AssistantMessageEventStream, create_assistant_message_event_stream
+from ..json_parse import parse_streaming_json
+from ..models import register_models, unregister_provider_models
+from ..runtime import (
     RequestAbortedError,
     create_abort_task,
     is_signal_aborted,
     maybe_await,
     raise_if_signal_aborted,
 )
-from .types import (
+from ..types import (
     AssistantMessage,
     Context,
     DoneEvent,
@@ -51,6 +50,7 @@ from .types import (
     ToolResultMessage,
     Usage,
 )
+from .shared import start_background_task
 
 DEFAULT_API = "faux"
 DEFAULT_PROVIDER = "faux"
@@ -532,7 +532,7 @@ def split_string_by_token_size(text: str, min_token_size: int, max_token_size: i
     while index < len(text):
         token_size = random.randint(min_token_size, max_token_size)
         char_size = max(1, token_size * 4)
-        chunks.append(text[index: index + char_size])
+        chunks.append(text[index : index + char_size])
         index += char_size
     return chunks or [""]
 

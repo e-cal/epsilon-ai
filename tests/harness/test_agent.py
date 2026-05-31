@@ -5,12 +5,14 @@ from typing import cast
 
 import pytest
 
-from epsilon.agent import Agent, AgentInitialState, AgentTool, AgentToolResult
+from epsilon.harness import Agent, AgentInitialState, AgentTool, AgentToolResult
 from epsilon.llm import (
     AssistantMessage,
     TextContent,
     ToolResultMessage,
     UserMessage,
+)
+from epsilon.llm.providers import (
     faux_assistant_message,
     faux_text,
     faux_thinking,

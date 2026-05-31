@@ -173,7 +173,7 @@ def test_llm_reasoning_levels_runtime_export_is_easy_to_use() -> None:
 def test_llm_faux_provider_example_runs_as_documented() -> None:
     block = _block_starting_with(
         DOCS_LLM_PATH,
-        "from epsilon.llm import faux_assistant_message, register_faux_provider",
+        "from epsilon.llm.providers import faux_assistant_message, register_faux_provider",
     )
 
     namespace: dict[str, Any] = {}

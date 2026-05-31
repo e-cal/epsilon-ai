@@ -519,10 +519,12 @@ async def process_openai_responses_event_stream(
 
         if event_type == "response.failed":
             response = cast(dict[str, Any], event.get("response") or {})
-            raise RuntimeError(
+            output.stop_reason = "error"
+            output.error_message = (
                 _get_openai_response_error_message(response)
                 or "Unknown error (no error details in response)"
             )
+            continue
 
 
 def map_openai_responses_status(status: str | None) -> StopReason:

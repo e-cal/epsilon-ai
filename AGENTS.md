@@ -6,9 +6,10 @@ Primary goal: achieve 1:1 feature and behavior parity with the TypeScript monore
 
 Primary target scope for the port:
 - `epsilon.llm` -> Python LLM client / provider layer
-- `epsilon.agent` -> Python agent framework
-- `epsilon.coding_agent` -> Python coding agent harness / CLI
-- `epsilon.tui` -> Python terminal UI support needed by the coding agent
+- `epsilon.harness` -> agent runtime + coding-agent harness + built-in tools (merged port of upstream `agent` and `coding-agent`)
+- `epsilon.server` -> server hosting an `epsilon.harness` runtime, exposing it via a wire API (no upstream equivalent)
+- `epsilon.client` -> Python client for `epsilon.server`, the canonical consumption surface for the TUI and external integrations (no upstream equivalent)
+- `epsilon.tui` -> Python terminal UI, OpenTUI-based and modeled on `~/projects/opencode`
 
 Out of scope for now unless the user explicitly asks:
 - `packages/mom`
@@ -26,15 +27,16 @@ If the user did not give a concrete task in their first message:
 When starting work on a subsystem, prioritize reading:
 - `README.md`
 - `docs/modules/llm.md`
-- `docs/modules/agent.md`
-- `docs/modules/coding_agent.md`
+- `docs/modules/harness.md`
+- `docs/modules/server.md`
+- `docs/modules/client.md`
 - `docs/modules/tui.md` when the work touches terminal UI
 
 Relevant upstream docs:
 - `pi-mono/packages/ai/README.md`
-- `pi-mono/packages/agent/README.md`
-- `pi-mono/packages/coding-agent/README.md`
-- `pi-mono/packages/tui/README.md` when the work touches terminal UI
+- `pi-mono/packages/agent/README.md` — both this and `coding-agent` map into `epsilon.harness`
+- `pi-mono/packages/coding-agent/README.md` — both this and `agent` map into `epsilon.harness`
+- `pi-mono/packages/tui/README.md` when the work touches terminal UI — note that `epsilon.tui` intentionally deviates from upstream (OpenTUI-based)
 
 > Note: fff will only work for this repo. Use grep and other builtin tools for working with ~/projects/pi-mono
 
@@ -52,10 +54,11 @@ If the user reports they just pulled new upstream commits mid-session, repeat th
 - Preserve user-visible behavior from `pi-mono` unless the user asks otherwise
 - Prefer structural parity with the original repo so the Python port remains easy to compare against upstream
 - Keep a clear separation between:
-  - AI/provider router
-  - agent runtime
-  - coding agent harness
-  - TUI support code
+  - AI/provider router (`epsilon.llm`)
+  - agent runtime + coding-agent harness + built-in tools (`epsilon.harness`)
+  - server (`epsilon.server`)
+  - client (`epsilon.client`)
+  - TUI (`epsilon.tui`)
 - TUI is an explicit area where implementation may intentionally diverge from upstream
   - We still want equivalent end-user capabilities in the coding agent
   - Language/framework parity is not required for the TUI layer
@@ -65,6 +68,12 @@ If the user reports they just pulled new upstream commits mid-session, repeat th
 - When behavior differs between a "Pythonic" rewrite and the original implementation, prefer parity first, then refactor carefully
 - Do not remove functionality that exists upstream without asking
 - Do not preserve backward compatibility unless the user explicitly asks for it
+
+## Intended Architectural Deviations
+- Upstream `agent` and `coding-agent` packages are merged into a single `epsilon.harness` module (runtime + coding harness + built-in tools).
+- The coding agent is server-first: there is no in-process coding-agent path. Even standalone single-user invocations run `epsilon.server`, and `epsilon.client` is the canonical consumption surface.
+- `epsilon.tui` is OpenTUI-based and modeled on `~/projects/opencode`, not on `pi-mono/packages/tui`.
+- When these deviations conflict with literal upstream structural parity, the deviations win.
 
 ## Python Code Quality
 - Use Python 3.12+ features where they improve clarity
@@ -84,16 +93,18 @@ If the user reports they just pulled new upstream commits mid-session, repeat th
 ## Project Structure
 The Python port ships as a single distribution with module-level boundaries:
 - `epsilon/llm/`
-- `epsilon/agent/`
-- `epsilon/coding_agent/`
+- `epsilon/harness/`
+- `epsilon/server/`
+- `epsilon/client/`
 - `epsilon/tui/`
 - `tests/llm/`
-- `tests/agent/`
+- `tests/harness/`
 
 Python import module names:
 - `epsilon.llm`
-- `epsilon.agent`
-- `epsilon.coding_agent`
+- `epsilon.harness`
+- `epsilon.server`
+- `epsilon.client`
 - `epsilon.tui`
 
 Layout preference:
@@ -104,14 +115,9 @@ Layout preference:
 If the repo has not reached the full upstream structure yet, create code with that destination in mind.
 
 TUI note:
-- The TUI module may ultimately be implemented with a different stack than upstream
-- Candidate directions currently include:
-  - follow `pi` closely
-  - custom Python TUI using Textual
-  - follow `~/projects/opencode` using OpenTUI patterns
-  - custom OpenTUI-based implementation
-- Current preference is an OpenTUI-based, opencode-inspired hybrid
-- Treat this as a late-phase design area; optimize for modularity and experimentation
+- The TUI module intentionally diverges from upstream
+- Decided direction: OpenTUI-based, modeled on `~/projects/opencode`
+- Treat this as a late-phase design area; optimize for modularity and hackability so the interaction model can evolve independently
 
 ## Commands
 Use Python-equivalent commands that fit the repository as it exists.
@@ -154,9 +160,11 @@ When implementing a feature, inspect the corresponding TypeScript source in `~/p
 
 Examples:
 - provider behavior: `pi-mono/packages/ai/src/`
-- agent loop/runtime behavior: `pi-mono/packages/agent/src/`
-- coding harness and CLI behavior: `pi-mono/packages/coding-agent/src/`
-- TUI behavior: `pi-mono/packages/tui/src/`
+- agent loop/runtime behavior: `pi-mono/packages/agent/src/` -> `epsilon.harness`
+- coding harness and CLI behavior: `pi-mono/packages/coding-agent/src/` -> `epsilon.harness`
+- TUI behavior: `pi-mono/packages/tui/src/` (reference only; `epsilon.tui` intentionally deviates)
+
+Note: `epsilon.server` and `epsilon.client` have no upstream equivalent and are designed from scratch.
 
 Read the original files fully before porting or changing the Python equivalent.
 

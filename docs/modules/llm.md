@@ -288,7 +288,7 @@ Foundry endpoint selection:
 The faux provider is intended for deterministic tests and local harnesses.
 
 ```python
-from epsilon.llm import faux_assistant_message, register_faux_provider
+from epsilon.llm.providers import faux_assistant_message, register_faux_provider
 
 registration = register_faux_provider()
 registration.set_responses([faux_assistant_message("hello")])

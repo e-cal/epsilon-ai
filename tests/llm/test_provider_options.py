@@ -24,6 +24,10 @@ from epsilon.llm.providers.openai_responses import (
     _run_openai_responses,
     build_openai_responses_payload,
 )
+from epsilon.llm.providers.openai_responses_shared import (
+    process_openai_responses_event_stream,
+)
+from epsilon.llm.providers.shared import create_empty_assistant_message
 from epsilon.llm.providers.simple_options import coerce_stream_options, stream_options_to_kwargs
 
 llm_stream_module = import_module("epsilon.llm.stream")
@@ -487,6 +491,47 @@ async def test_run_azure_openai_responses_includes_response_body_in_http_errors(
         "Invalid 'max_output_tokens': integer below minimum value."
         in (message.error_message or "")
     )
+
+
+@pytest.mark.asyncio
+async def test_openai_responses_failed_event_does_not_hide_following_error() -> None:
+    async def events():
+        yield {
+            "type": "response.failed",
+            "response": {"status": "failed", "error": None, "incomplete_details": None},
+        }
+        yield {
+            "type": "error",
+            "error": {
+                "code": "too_many_requests",
+                "message": "Too Many Requests",
+            },
+        }
+
+    model = get_model("foundry", "gpt-5-mini")
+    output = create_empty_assistant_message(api=model.api, provider=model.provider, model=model.id)
+    stream = create_assistant_message_event_stream()
+
+    with pytest.raises(RuntimeError, match="too_many_requests.*Too Many Requests"):
+        await process_openai_responses_event_stream(events(), output, stream, model)
+
+
+@pytest.mark.asyncio
+async def test_openai_responses_failed_event_preserves_fallback_error() -> None:
+    async def events():
+        yield {
+            "type": "response.failed",
+            "response": {"status": "failed", "error": None, "incomplete_details": None},
+        }
+
+    model = get_model("foundry", "gpt-5-mini")
+    output = create_empty_assistant_message(api=model.api, provider=model.provider, model=model.id)
+    stream = create_assistant_message_event_stream()
+
+    await process_openai_responses_event_stream(events(), output, stream, model)
+
+    assert output.stop_reason == "error"
+    assert output.error_message == "Unknown error (no error details in response)"
 
 
 @pytest.mark.asyncio

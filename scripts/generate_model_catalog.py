@@ -68,7 +68,7 @@ def _extract_braced_block(text: str, brace_index: int) -> tuple[str, int]:
         if char == "}":
             depth -= 1
             if depth == 0:
-                return text[brace_index : index + 1], index + 1
+                return text[brace_index: index + 1], index + 1
 
     raise ValueError("Unterminated braced block")
 

@@ -132,7 +132,7 @@ async def _run_azure_openai_responses(
 
         raise_if_signal_aborted(options.signal if options else None)
         if output.stop_reason in {"error", "aborted"}:
-            raise RuntimeError("An unknown error occurred")
+            raise RuntimeError(output.error_message or "An unknown error occurred")
 
         stream.push(
             DoneEvent(

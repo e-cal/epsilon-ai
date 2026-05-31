@@ -5,7 +5,7 @@ from typing import cast
 
 import pytest
 
-from epsilon.agent import (
+from epsilon.harness import (
     AgentContext,
     AgentLoopConfig,
     AgentMessage,
@@ -18,6 +18,8 @@ from epsilon.llm import (
     TextContent,
     ToolResultMessage,
     UserMessage,
+)
+from epsilon.llm.providers import (
     faux_assistant_message,
     faux_tool_call,
     register_faux_provider,
@@ -457,7 +459,7 @@ async def test_agent_loop_continue_allows_custom_last_message_via_convert_to_llm
                 if getattr(message, "role", None) == "custom":
                     converted.append(
                         UserMessage(
-                            content=getattr(message, "text"),
+                            content=message.text,
                             timestamp=message.timestamp,
                         )
                     )

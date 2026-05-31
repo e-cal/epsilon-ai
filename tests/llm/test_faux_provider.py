@@ -12,12 +12,14 @@ from epsilon.llm import (
     UserMessage,
     complete,
     complete_async,
+    stream,
+)
+from epsilon.llm.providers import (
     faux_assistant_message,
     faux_text,
     faux_thinking,
     faux_tool_call,
     register_faux_provider,
-    stream,
 )
 
 

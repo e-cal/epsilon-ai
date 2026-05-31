@@ -12,14 +12,6 @@ from .event_stream import (
     EventStream,
     create_assistant_message_event_stream,
 )
-from .faux import (
-    FauxProviderRegistration,
-    faux_assistant_message,
-    faux_text,
-    faux_thinking,
-    faux_tool_call,
-    register_faux_provider,
-)
 from .models import (
     calculate_cost,
     clear_models,
@@ -64,10 +56,16 @@ from .providers import (
     AnthropicEffort,
     AnthropicOptions,
     AnthropicThinkingDisplay,
+    FauxProviderRegistration,
     FoundryOptions,
     OpenAICodexResponsesOptions,
     OpenAIResponsesOptions,
+    faux_assistant_message,
+    faux_text,
+    faux_thinking,
+    faux_tool_call,
     register_built_in_api_providers,
+    register_faux_provider,
     reset_api_providers,
 )
 from .stream import complete, complete_async, stream
